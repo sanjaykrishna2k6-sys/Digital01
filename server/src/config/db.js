@@ -16,7 +16,8 @@ export async function connectDB() {
       serverSelectionTimeoutMS: 5000,
     })
 
-    console.log(`[MongoDB] Connected successfully to host: ${conn.connection.host}`)
+    console.log('MongoDB connected successfully')
+    console.log(`[MongoDB] Connected host: ${conn.connection.host}`)
     return conn
   } catch (err) {
     console.warn(`[MongoDB] Initial connection failed: ${err.message}`)

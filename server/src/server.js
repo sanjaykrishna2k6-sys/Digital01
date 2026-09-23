@@ -13,6 +13,7 @@ async function startServer() {
 
   // Start HTTP server
   const server = app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
     console.log(`[Server] Digital Marketing Platform backend running on port ${PORT}`)
     console.log(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`)
     console.log(`[Server] Health check: http://127.0.0.1:${PORT}/api/health`)
