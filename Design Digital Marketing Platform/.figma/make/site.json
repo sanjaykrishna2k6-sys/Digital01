@@ -1,0 +1,10 @@
+{
+  "description": "Streamline digital marketing operations with a comprehensive management platform designed for agencies and their clients, enhancing collaboration and performance tracking.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
