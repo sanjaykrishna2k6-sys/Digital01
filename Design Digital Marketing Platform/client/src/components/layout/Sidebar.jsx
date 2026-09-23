@@ -38,12 +38,15 @@ const NAV_BOTTOM = [
   { icon: Settings, label: 'Settings', path: '/dashboard#settings' },
 ]
 
+import { useAuth } from '../../context/AuthContext'
+
 export function Sidebar({ className }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
 
-  const handleLogout = () => {
-    // Navigate cleanly to login (no real auth/localStorage tokens used as specified)
+  const handleLogout = async () => {
+    await logout()
     navigate('/login')
   }
 
@@ -107,11 +110,13 @@ export function Sidebar({ className }) {
       <div className="p-3 border-t border-[#F3F4F6] mt-2">
         <div className="flex items-center gap-2.5 p-2 rounded-[8px] hover:bg-[#F9FAFB] transition-colors">
           <div className="w-8 h-8 rounded-full bg-[#4F46E5] flex items-center justify-center text-white text-xs font-bold shrink-0">
-            SK
+            {user?.name ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'SA'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-[#111827] truncate">Sanjay Kumar</p>
-            <p className="text-[10px] text-[#9CA3AF] truncate">Agency Manager</p>
+            <p className="text-xs font-semibold text-[#111827] truncate">{user?.name || 'Super Admin'}</p>
+            <p className="text-[10px] text-[#9CA3AF] truncate capitalize">
+              {user?.role ? user.role.replace('_', ' ') : 'Agency Manager'}
+            </p>
           </div>
           <button
             type="button"

@@ -8,16 +8,20 @@ import { DesignSystemPage } from '../pages/DesignSystemPage'
 import { PublicWebsitePage } from '../pages/PublicWebsitePage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 
+import { ProtectedRoute } from '../components/layout/ProtectedRoute'
+
 export function AppRoutes() {
   return (
     <Routes>
       {/* Authentication */}
       <Route path="/login" element={<LoginPage />} />
 
-      {/* Main Agency Platform Layout */}
-      <Route element={<AppLayout />}>
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      {/* Main Agency Platform Layout (Protected by HTTP-only cookie session) */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppLayout />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        </Route>
       </Route>
 
       {/* Full Figma Pages */}

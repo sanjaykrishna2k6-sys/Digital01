@@ -1,10 +1,14 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Zap, TrendingUp, Users, BarChart3, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
+import { useAuth } from '../context/AuthContext'
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { login, isAuthenticated } = useAuth()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -13,21 +17,40 @@ export function LoginPage() {
   const [passFocused, setPassFocused] = useState(false)
   const [formState, setFormState] = useState('default') // 'default' | 'loading' | 'error'
   const [emailError, setEmailError] = useState('')
+  const [authError, setAuthError] = useState('')
 
-  const handleSubmit = (e) => {
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setEmailError('')
+    setAuthError('')
+
     if (!email || !email.includes('@')) {
       setEmailError('Please enter a valid email address.')
       return
     }
 
+    if (!password) {
+      setAuthError('Please enter your password.')
+      setFormState('error')
+      return
+    }
+
     setFormState('loading')
-    setTimeout(() => {
-      // Direct navigation to dashboard (no tokens/passwords stored in localStorage)
-      setFormState('default')
-      navigate('/dashboard')
-    }, 700)
+    try {
+      await login(email, password)
+      const targetPath = location.state?.from?.pathname || '/dashboard'
+      navigate(targetPath, { replace: true })
+    } catch (err) {
+      setAuthError(err.message || 'The email or password you entered is incorrect. Please try again.')
+      setFormState('error')
+    }
   }
 
   const inputStyle = (focused, hasError) => ({
@@ -124,8 +147,8 @@ export function LoginPage() {
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 14px', marginBottom: 20 }}>
               <AlertCircle size={16} color="#EF4444" style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
-                <p style={{ fontSize: 13, fontWeight: 600, color: '#B91C1C', margin: 0 }}>Invalid credentials</p>
-                <p style={{ fontSize: 12, color: '#EF4444', margin: '2px 0 0' }}>The email or password you entered is incorrect. Please try again.</p>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#B91C1C', margin: 0 }}>Authentication Failed</p>
+                <p style={{ fontSize: 12, color: '#EF4444', margin: '2px 0 0' }}>{authError || 'The email or password you entered is incorrect.'}</p>
               </div>
             </div>
           )}

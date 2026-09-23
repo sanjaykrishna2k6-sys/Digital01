@@ -115,15 +115,19 @@ function ViewflowSwitcher() {
   )
 }
 
+import { AuthProvider } from './context/AuthContext'
+
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col" style={{ background: '#F9FAFB', fontFamily: 'Inter, system-ui, sans-serif' }}>
-        <ViewflowSwitcher />
-        <div className="flex-1">
-          <AppRoutes />
+      <AuthProvider>
+        <div className="min-h-screen flex flex-col" style={{ background: '#F9FAFB', fontFamily: 'Inter, system-ui, sans-serif' }}>
+          <ViewflowSwitcher />
+          <div className="flex-1">
+            <AppRoutes />
+          </div>
         </div>
-      </div>
+      </AuthProvider>
     </BrowserRouter>
   )
 }
