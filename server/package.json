@@ -6,7 +6,10 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test": "node src/tests/user-management.test.js && node src/tests/auth-system.test.js",
+    "test:users": "node src/tests/user-management.test.js",
+    "test:auth": "node src/tests/auth-system.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

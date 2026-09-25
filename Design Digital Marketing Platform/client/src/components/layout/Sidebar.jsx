@@ -21,6 +21,7 @@ import { cn } from '../../utils/formatters'
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Overview', path: '/dashboard' },
+  { icon: UserSquare2, label: 'Users', path: '/users' },
   { icon: Target, label: 'Leads', path: '/dashboard#leads' },
   { icon: Users, label: 'Clients', path: '/dashboard#clients' },
   { icon: FolderOpen, label: 'Projects', path: '/dashboard#projects' },
@@ -50,6 +51,14 @@ export function Sidebar({ className }) {
     navigate('/login')
   }
 
+  // Hide Users from clients as per security requirements
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.path === '/users' && user?.role === 'client') {
+      return false
+    }
+    return true
+  })
+
   return (
     <aside
       className={cn(
@@ -70,7 +79,7 @@ export function Sidebar({ className }) {
 
       {/* Main Navigation */}
       <nav className="flex-1 px-3 space-y-0.5">
-        {NAV_ITEMS.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon
           const isActive = location.pathname === item.path || (item.path === '/dashboard' && location.pathname === '/')
 

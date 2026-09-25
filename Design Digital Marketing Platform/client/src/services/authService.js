@@ -29,6 +29,26 @@ export async function login(email, password) {
 }
 
 /**
+ * Public signup: creates organization and first agency administrator.
+ */
+export async function signup(payload) {
+  const response = await fetch(`${API_BASE}/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Signup failed. Please try again.')
+  }
+
+  return data
+}
+
+/**
  * Check active session and fetch current authenticated user and organization.
  */
 export async function getMe() {
@@ -57,6 +77,66 @@ export async function logout() {
   } catch (err) {
     console.error('Logout error:', err)
   }
+}
+
+/**
+ * Initiate password reset by providing email.
+ */
+export async function forgotPassword(email) {
+  const response = await fetch(`${API_BASE}/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to request password reset.')
+  }
+
+  return data
+}
+
+/**
+ * Reset password using the one-time token.
+ */
+export async function resetPassword(token, newPassword) {
+  const response = await fetch(`${API_BASE}/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ token, newPassword }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to reset password.')
+  }
+
+  return data
+}
+
+/**
+ * Change password for currently authenticated user.
+ */
+export async function changePassword(currentPassword, newPassword) {
+  const response = await fetch(`${API_BASE}/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to change password.')
+  }
+
+  return data
 }
 
 /**

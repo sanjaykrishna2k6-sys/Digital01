@@ -10,7 +10,7 @@ export function ProtectedRoute({ children }) {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <Loading size="lg" text="Verifying agency credentials..." />
+        <Loading size="lg" title="Verifying agency credentials..." />
       </div>
     )
   }

@@ -27,7 +27,9 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      required: function () {
+        return this.authProvider === 'local' && !this.googleId
+      },
       minlength: [8, 'Password must be at least 8 characters long'],
       select: false, // Never return password in standard queries
     },
@@ -36,6 +38,28 @@ const userSchema = new mongoose.Schema(
       enum: ['super_admin', 'agency_admin', 'account_manager', 'team_member', 'client'],
       default: 'team_member',
       index: true,
+    },
+    authProvider: {
+      type: String,
+      enum: ['local', 'google'],
+      default: 'local',
+      index: true,
+    },
+    googleId: {
+      type: String,
+      sparse: true,
+      index: true,
+    },
+    passwordResetTokenHash: {
+      type: String,
+      select: false,
+    },
+    passwordResetExpiresAt: {
+      type: Date,
+      select: false,
+    },
+    passwordChangedAt: {
+      type: Date,
     },
     status: {
       type: String,
@@ -57,6 +81,8 @@ const userSchema = new mongoose.Schema(
     toJSON: {
       transform(doc, ret) {
         delete ret.password
+        delete ret.passwordResetTokenHash
+        delete ret.passwordResetExpiresAt
         delete ret.__v
         return ret
       },
@@ -66,7 +92,7 @@ const userSchema = new mongoose.Schema(
 
 // Pre-save hook: Hash password securely with bcrypt
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next()
+  if (!this.isModified('password') || !this.password) return next()
   try {
     const salt = await bcrypt.genSalt(12)
     this.password = await bcrypt.hash(this.password, salt)

@@ -28,9 +28,16 @@ app.use(
   })
 )
 
-// 3. Request Parsers & Body Size Limits
-app.use(express.json({ limit: '10kb' }))
-app.use(express.urlencoded({ extended: true, limit: '10kb' }))
+// 3. Request Parsers & Body Size Limits (with rawBody capture for webhook HMAC)
+app.use(
+  express.json({
+    limit: '2mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf
+    },
+  })
+)
+app.use(express.urlencoded({ extended: true, limit: '2mb' }))
 app.use(cookieParser())
 
 // 4. Rate Limiter on API routes

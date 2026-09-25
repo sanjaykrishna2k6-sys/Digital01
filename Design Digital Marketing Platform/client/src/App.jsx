@@ -5,7 +5,9 @@ import { Eye, EyeOff } from 'lucide-react'
 
 const PAGES = [
   { id: 'agency', label: 'Agency Dashboard', path: '/dashboard' },
-  { id: 'auth', label: 'Authentication', path: '/login' },
+  { id: 'users', label: 'User Management', path: '/users' },
+  { id: 'auth', label: 'Sign In', path: '/login' },
+  { id: 'signup', label: 'Sign Up', path: '/signup' },
   { id: 'client', label: 'Client Portal', path: '/portal' },
   { id: 'design-system', label: 'Design System', path: '/design-system' },
   { id: 'website', label: 'Public Website', path: '/website' },

@@ -45,12 +45,24 @@ const organizationSchema = new mongoose.Schema(
 )
 
 // Auto-generate slug from name if not provided
-organizationSchema.pre('validate', function (next) {
+organizationSchema.pre('validate', async function (next) {
   if (this.name && !this.slug) {
-    this.slug = this.name
+    const baseSlug = this.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)+/g, '')
+      .replace(/(^-|-$)+/g, '') || 'org'
+    let candidate = baseSlug
+    let counter = 1
+    // Ensure slug uniqueness
+    while (await mongoose.models.Organization.findOne({ slug: candidate, _id: { $ne: this._id } })) {
+      candidate = `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`
+      counter++
+      if (counter > 5) {
+        candidate = `${baseSlug}-${Date.now().toString(36)}`
+        break
+      }
+    }
+    this.slug = candidate
   }
   next()
 })
