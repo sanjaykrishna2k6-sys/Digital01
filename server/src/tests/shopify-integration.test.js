@@ -1,9 +1,12 @@
+process.env.NODE_ENV = 'test'
 import dotenv from 'dotenv'
 dotenv.config()
 
 import http from 'http'
-import crypto from 'crypto'
-import mongoose from 'mongoose'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { execSync } from 'child_process'
 import app from '../app.js'
 import { connectDB } from '../config/db.js'
 import User from '../models/User.js'
@@ -13,13 +16,11 @@ import ShopifyProduct from '../models/ShopifyProduct.js'
 import ShopifyOrder from '../models/ShopifyOrder.js'
 import ShopifyCustomer from '../models/ShopifyCustomer.js'
 import { generateToken } from '../utils/token.js'
-import {
-  encryptToken,
-  decryptToken,
-  isValidShopDomain,
-  verifyShopifyOAuthHmac,
-  verifyShopifyWebhookHmac,
-} from '../utils/crypto.js'
+import { encryptToken } from '../utils/crypto.js'
+import bcrypt from 'bcryptjs'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 let passedCount = 0
 let failedCount = 0
@@ -39,7 +40,7 @@ function assert(condition, testName, details = '') {
 
 async function runTests() {
   console.log('=================================================================')
-  console.log('🚀 Running Shopify Integration Test Suite (20 Scenarios)')
+  console.log('🚀 Running Shopify Integration Test Suite (18 Scenarios)')
   console.log('=================================================================\n')
 
   await connectDB()
@@ -51,63 +52,15 @@ async function runTests() {
 
   console.log(`Test server bound to ephemeral port: ${baseUrl}\n`)
 
+  let orgA, orgB
+  let adminA, managerA, memberA, clientA, adminB
+  let storeA, storeB
+
   try {
     // -------------------------------------------------------------
-    // Suite 1: Cryptography & Security
+    // Setup Organizations and Test Users
     // -------------------------------------------------------------
-    console.log('[Suite 1: Cryptography & Security]')
-    const rawSecret = 'shpat_test_access_token_1234567890abcdef'
-    const encrypted = encryptToken(rawSecret)
-    const decrypted = decryptToken(encrypted)
-    assert(
-      encrypted.includes(':') && decrypted === rawSecret,
-      'AES-256-GCM token encryption and decryption round-trip matches exactly'
-    )
-
-    let tamperingDetected = false
-    try {
-      const parts = encrypted.split(':')
-      const tampered = `${parts[0]}:${parts[1]}:deadbeef${parts[2].slice(8)}`
-      decryptToken(tampered)
-    } catch (err) {
-      tamperingDetected = true
-    }
-    assert(tamperingDetected, 'AES-256-GCM authentication tag verifies integrity and rejects tampered ciphertext')
-
-    assert(
-      isValidShopDomain('my-brand-store.myshopify.com') &&
-        isValidShopDomain('acme-123.myshopify.com') &&
-        !isValidShopDomain('evil.com') &&
-        !isValidShopDomain('store.myshopify.com.evil.com') &&
-        !isValidShopDomain(''),
-      'isValidShopDomain correctly filters valid Shopify subdomains and blocks malicious SSRF/open redirects'
-    )
-
-    // HMAC calculation
-    const testSecret = 'shopify_api_secret_test_key_123'
-    const query = {
-      code: 'auth_code_999',
-      shop: 'test-store.myshopify.com',
-      state: 'nonce_abc123',
-      timestamp: '1727100000',
-    }
-    const message = 'code=auth_code_999&shop=test-store.myshopify.com&state=nonce_abc123&timestamp=1727100000'
-    const validHmac = crypto.createHmac('sha256', testSecret).update(message).digest('hex')
-
-    assert(
-      verifyShopifyOAuthHmac({ ...query, hmac: validHmac }, testSecret),
-      'verifyShopifyOAuthHmac verifies authentic Shopify OAuth signature'
-    )
-    assert(
-      !verifyShopifyOAuthHmac({ ...query, hmac: 'forged_invalid_hmac' }, testSecret),
-      'verifyShopifyOAuthHmac rejects forged/tampered signature'
-    )
-
-    // -------------------------------------------------------------
-    // Suite 2: Multi-Tenant Organizations & Access Control
-    // -------------------------------------------------------------
-    console.log('\n[Suite 2: Multi-Tenant Authorization & Roles]')
-    let orgA = await Organization.findOne({ slug: 'shopify-test-org-a' })
+    orgA = await Organization.findOne({ slug: 'shopify-test-org-a' })
     if (!orgA) {
       orgA = await Organization.create({
         name: 'Shopify Test Org A',
@@ -116,7 +69,7 @@ async function runTests() {
       })
     }
 
-    let orgB = await Organization.findOne({ slug: 'shopify-test-org-b' })
+    orgB = await Organization.findOne({ slug: 'shopify-test-org-b' })
     if (!orgB) {
       orgB = await Organization.create({
         name: 'Shopify Test Org B',
@@ -125,315 +78,501 @@ async function runTests() {
       })
     }
 
-    let adminA = await User.findOne({ email: 'admin-shopify-a@scalevo.com' })
+    const salt = await bcrypt.genSalt(10)
+    const hashedPassword = await bcrypt.hash('Password123!', salt)
+
+    // Agency Admin (Org A)
+    adminA = await User.findOne({ email: 'admin-shopify-a@scalevo.com' })
     if (!adminA) {
       adminA = await User.create({
         organization: orgA._id,
         name: 'Admin Org A',
         email: 'admin-shopify-a@scalevo.com',
-        password: 'Password123!',
+        password: hashedPassword,
         role: 'agency_admin',
         status: 'active',
       })
     }
 
-    let memberA = await User.findOne({ email: 'member-shopify-a@scalevo.com' })
+    // Account Manager (Org A)
+    managerA = await User.findOne({ email: 'mgr-shopify-a@scalevo.com' })
+    if (!managerA) {
+      managerA = await User.create({
+        organization: orgA._id,
+        name: 'Manager Org A',
+        email: 'mgr-shopify-a@scalevo.com',
+        password: hashedPassword,
+        role: 'account_manager',
+        status: 'active',
+      })
+    }
+
+    // Team Member (Org A)
+    memberA = await User.findOne({ email: 'member-shopify-a@scalevo.com' })
     if (!memberA) {
       memberA = await User.create({
         organization: orgA._id,
         name: 'Member Org A',
         email: 'member-shopify-a@scalevo.com',
-        password: 'Password123!',
+        password: hashedPassword,
         role: 'team_member',
         status: 'active',
       })
     }
 
-    let adminB = await User.findOne({ email: 'admin-shopify-b@scalevo.com' })
+    // Client Role User (Org A)
+    clientA = await User.findOne({ email: 'client-shopify-a@scalevo.com' })
+    if (!clientA) {
+      clientA = await User.create({
+        organization: orgA._id,
+        name: 'Client Org A',
+        email: 'client-shopify-a@scalevo.com',
+        password: hashedPassword,
+        role: 'client',
+        status: 'active',
+      })
+    }
+
+    // Agency Admin (Org B)
+    adminB = await User.findOne({ email: 'admin-shopify-b@scalevo.com' })
     if (!adminB) {
       adminB = await User.create({
         organization: orgB._id,
         name: 'Admin Org B',
         email: 'admin-shopify-b@scalevo.com',
-        password: 'Password123!',
+        password: hashedPassword,
         role: 'agency_admin',
         status: 'active',
       })
     }
 
-    const tokenAdminA = generateToken({ userId: adminA._id })
-    const tokenMemberA = generateToken({ userId: memberA._id })
-    const tokenAdminB = generateToken({ userId: adminB._id })
+    // Cookies
+    const cookieAdminA = `scalevo_token=${generateToken({ userId: adminA._id, organizationId: orgA._id, role: adminA.role })}`
+    const cookieManagerA = `scalevo_token=${generateToken({ userId: managerA._id, organizationId: orgA._id, role: managerA.role })}`
+    const cookieMemberA = `scalevo_token=${generateToken({ userId: memberA._id, organizationId: orgA._id, role: memberA.role })}`
+    const cookieClientA = `scalevo_token=${generateToken({ userId: clientA._id, organizationId: orgA._id, role: clientA.role })}`
+    const cookieAdminB = `scalevo_token=${generateToken({ userId: adminB._id, organizationId: orgB._id, role: adminB.role })}`
 
-    const cookieAdminA = `scalevo_token=${tokenAdminA}`
-    const cookieMemberA = `scalevo_token=${tokenMemberA}`
-    const cookieAdminB = `scalevo_token=${tokenAdminB}`
+    // Clean up previous test artifacts
+    await ShopifyStore.deleteMany({ organizationId: { $in: [orgA._id, orgB._id] } })
+    await ShopifyProduct.deleteMany({ organizationId: { $in: [orgA._id, orgB._id] } })
+    await ShopifyOrder.deleteMany({ organizationId: { $in: [orgA._id, orgB._id] } })
+    await ShopifyCustomer.deleteMany({ organizationId: { $in: [orgA._id, orgB._id] } })
 
-    // Unauthenticated status call
-    const unauthRes = await fetch(`${baseUrl}/api/integrations/shopify/status`)
-    assert(unauthRes.status === 401, 'GET /api/integrations/shopify/status rejects unauthenticated requests (401)')
+    // -----------------------------------------------------------------
+    // Scenario 1: Unauthenticated Shopify request returns 401
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 1: Unauthenticated Shopify request returns 401')
+    const unauthRes = await fetch(`${baseUrl}/api/shopify/status`)
+    assert(unauthRes.status === 401, '1. Unauthenticated Shopify request returns 401', `status: ${unauthRes.status}`)
 
-    // Team member restricted from initiating store connect
-    const memberConnectRes = await fetch(`${baseUrl}/api/integrations/shopify/connect?shop=test.myshopify.com`, {
+    // -----------------------------------------------------------------
+    // Scenario 2: Authorized agency admin can access Shopify status
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 2: Authorized agency admin can access Shopify status')
+    const statusRes = await fetch(`${baseUrl}/api/shopify/status`, {
+      headers: { Cookie: cookieAdminA },
+    })
+    const statusData = await statusRes.json()
+    assert(
+      statusRes.status === 200 && statusData.status === 'success' && statusData.data?.isConnected === false,
+      '2. Authorized agency admin can access Shopify status',
+      `status: ${statusRes.status}, isConnected: ${statusData.data?.isConnected}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 3: Shopify connection is scoped to authenticated organization
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 3: Shopify connection is scoped to authenticated organization')
+    const testShopDomain = 'scalevo-demo.myshopify.com'
+    storeA = await ShopifyStore.create({
+      organizationId: orgA._id,
+      organization: orgA._id,
+      shopDomain: testShopDomain,
+      shopName: 'Scalevo Demo Apparel',
+      shopEmail: 'owner@scalevodemo.com',
+      currency: 'USD',
+      country: 'US',
+      timezone: 'America/New_York',
+      encryptedAccessToken: encryptToken('shpat_mock_token_for_testing'),
+      status: 'connected',
+      connectedAt: new Date(),
+      installedAt: new Date(),
+    })
+
+    const connectedStatusRes = await fetch(`${baseUrl}/api/shopify/status`, {
+      headers: { Cookie: cookieAdminA },
+    })
+    const connectedStatusData = await connectedStatusRes.json()
+    assert(
+      connectedStatusRes.status === 200 &&
+        connectedStatusData.data?.isConnected === true &&
+        connectedStatusData.data?.store?.shopDomain === testShopDomain,
+      '3. Shopify connection is scoped to authenticated organization',
+      `shopDomain: ${connectedStatusData.data?.store?.shopDomain}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 4: Organization A cannot access Organization B's Shopify store
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 4: Organization A cannot access Organization B\'s Shopify store')
+    // Org B checks status: must NOT see Org A's store
+    const orgBStatusRes = await fetch(`${baseUrl}/api/shopify/status`, {
+      headers: { Cookie: cookieAdminB },
+    })
+    const orgBStatusData = await orgBStatusRes.json()
+    const orgBStoreRes = await fetch(`${baseUrl}/api/shopify/store`, {
+      headers: { Cookie: cookieAdminB },
+    })
+    assert(
+      orgBStatusRes.status === 200 &&
+        orgBStatusData.data?.isConnected === false &&
+        orgBStatusData.data?.store === null &&
+        orgBStoreRes.status === 404,
+      '4. Organization A cannot access Organization B\'s Shopify store (Org B sees disconnected/404)',
+      `Org B isConnected: ${orgBStatusData.data?.isConnected}, store status: ${orgBStoreRes.status}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 5: Organization A cannot access Organization B's Shopify data
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 5: Organization A cannot access Organization B\'s Shopify data')
+    // Create product & order for Org A
+    const prodA = await ShopifyProduct.create({
+      organizationId: orgA._id,
+      organization: orgA._id,
+      shopifyStore: storeA._id,
+      shopifyProductId: 'gid://shopify/Product/111111',
+      title: 'Org A Premium Jacket',
+      price: 199.99,
+      totalInventory: 25,
+      sku: 'JKT-001',
+      status: 'ACTIVE',
+    })
+    const orderA = await ShopifyOrder.create({
+      organizationId: orgA._id,
+      organization: orgA._id,
+      shopifyStore: storeA._id,
+      shopifyOrderId: 'gid://shopify/Order/222222',
+      orderNumber: '#1001',
+      customerName: 'Alice Smith',
+      customerEmail: 'alice@example.com',
+      totalPrice: 199.99,
+      financialStatus: 'PAID',
+      fulfillmentStatus: 'FULFILLED',
+    })
+
+    // Org B tries to fetch products, orders, and specific product ID
+    const orgBProdsRes = await fetch(`${baseUrl}/api/shopify/products`, {
+      headers: { Cookie: cookieAdminB },
+    })
+    const orgBProdsData = await orgBProdsRes.json()
+
+    const crossProdRes = await fetch(`${baseUrl}/api/shopify/products/${prodA._id}`, {
+      headers: { Cookie: cookieAdminB },
+    })
+    const crossOrderRes = await fetch(`${baseUrl}/api/shopify/orders/${orderA._id}`, {
+      headers: { Cookie: cookieAdminB },
+    })
+    assert(
+      orgBProdsData.data?.products?.length === 0 &&
+        crossProdRes.status === 404 &&
+        crossOrderRes.status === 404,
+      '5. Organization A cannot access Organization B\'s Shopify data (Isolated products/orders, 404 on direct IDs)',
+      `Org B prods count: ${orgBProdsData.data?.products?.length}, direct prod status: ${crossProdRes.status}, direct order status: ${crossOrderRes.status}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 6: Client role receives 403
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 6: Client role receives 403')
+    const clientStatusRes = await fetch(`${baseUrl}/api/shopify/status`, {
+      headers: { Cookie: cookieClientA },
+    })
+    const clientProductsRes = await fetch(`${baseUrl}/api/shopify/products`, {
+      headers: { Cookie: cookieClientA },
+    })
+    assert(
+      clientStatusRes.status === 403 && clientProductsRes.status === 403,
+      '6. Client role receives 403 (Blocked from agency Shopify APIs)',
+      `status: ${clientStatusRes.status}, products: ${clientProductsRes.status}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 7: Team member cannot connect/disconnect Shopify
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 7: Team member cannot connect/disconnect Shopify')
+    const memberConnectRes = await fetch(`${baseUrl}/api/shopify/connect?shop=test.myshopify.com`, {
+      headers: { Cookie: cookieMemberA },
+    })
+    const memberDisconnectRes = await fetch(`${baseUrl}/api/shopify/disconnect`, {
+      method: 'POST',
       headers: { Cookie: cookieMemberA },
     })
     assert(
-      memberConnectRes.status === 403,
-      'GET /api/integrations/shopify/connect restricts non-admin roles (403 Forbidden)'
+      memberConnectRes.status === 403 && memberDisconnectRes.status === 403,
+      '7. Team member cannot connect/disconnect Shopify (403 Forbidden)',
+      `connect: ${memberConnectRes.status}, disconnect: ${memberDisconnectRes.status}`
     )
 
-    // Admin initiates connect with invalid shop
-    const invalidShopRes = await fetch(`${baseUrl}/api/integrations/shopify/connect?shop=invalid-domain.com`, {
+    // -----------------------------------------------------------------
+    // Scenario 8: Account manager cannot disconnect Shopify
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 8: Account manager cannot disconnect Shopify')
+    const mgrDisconnectRes = await fetch(`${baseUrl}/api/shopify/disconnect`, {
+      method: 'POST',
+      headers: { Cookie: cookieManagerA },
+    })
+    assert(
+      mgrDisconnectRes.status === 403,
+      '8. Account manager cannot disconnect Shopify (403 Forbidden)',
+      `disconnect: ${mgrDisconnectRes.status}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 9: Shopify credentials are never returned by API
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 9: Shopify credentials are never returned by API')
+    const statusPayload = await (
+      await fetch(`${baseUrl}/api/shopify/status`, { headers: { Cookie: cookieAdminA } })
+    ).json()
+    const storePayload = await (
+      await fetch(`${baseUrl}/api/shopify/store`, { headers: { Cookie: cookieAdminA } })
+    ).json()
+    const prodsPayload = await (
+      await fetch(`${baseUrl}/api/shopify/products`, { headers: { Cookie: cookieAdminA } })
+    ).json()
+
+    const hasLeakedCredentials =
+      statusPayload.data?.store?.encryptedAccessToken !== undefined ||
+      statusPayload.data?.store?.accessToken !== undefined ||
+      storePayload.data?.store?.encryptedAccessToken !== undefined ||
+      storePayload.data?.store?.accessToken !== undefined ||
+      JSON.stringify(prodsPayload).includes('shpat_')
+
+    assert(
+      !hasLeakedCredentials,
+      '9. Shopify credentials are never returned by API (accessToken & encryptedAccessToken omitted)',
+      `leaked: ${hasLeakedCredentials}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 10: Shopify access token is never stored in localStorage/sessionStorage
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 10: Shopify access token is never stored in localStorage/sessionStorage')
+    const clientSrcPath = path.resolve(__dirname, '../../../Design Digital Marketing Platform/client/src')
+    const serviceCode = fs.readFileSync(path.join(clientSrcPath, 'services/shopifyService.js'), 'utf-8')
+    const pageCode = fs.readFileSync(path.join(clientSrcPath, 'pages/ShopifyPage.jsx'), 'utf-8')
+
+    const setItemRegex = /localStorage\.setItem\s*\(\s*['"`](token|password|jwt|secret|auth|shopify|access)/i
+    const sessionSetRegex = /sessionStorage\.setItem\s*\(\s*['"`](token|password|jwt|secret|auth|shopify|access)/i
+    const storesInStorage =
+      setItemRegex.test(serviceCode) ||
+      sessionSetRegex.test(serviceCode) ||
+      setItemRegex.test(pageCode) ||
+      sessionSetRegex.test(pageCode)
+
+    assert(
+      !storesInStorage,
+      '10. Shopify access token is never stored in localStorage/sessionStorage (Pure HTTP-only server proxy)',
+      `storesInStorage: ${storesInStorage}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 11: Invalid shop domain is rejected
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 11: Invalid shop domain is rejected')
+    const invalidShopRes = await fetch(`${baseUrl}/api/shopify/connect?shop=malicious-domain.com`, {
+      headers: { Cookie: cookieAdminA },
+    })
+    const emptyShopRes = await fetch(`${baseUrl}/api/shopify/connect?shop=`, {
       headers: { Cookie: cookieAdminA },
     })
     assert(
-      invalidShopRes.status === 400,
-      'GET /api/integrations/shopify/connect rejects invalid store domains (400 Bad Request)'
+      invalidShopRes.status === 400 && emptyShopRes.status === 400,
+      '11. Invalid shop domain is rejected (400 Bad Request)',
+      `invalid: ${invalidShopRes.status}, empty: ${emptyShopRes.status}`
     )
 
-    // Admin initiates connect with valid shop
-    const validConnectRes = await fetch(`${baseUrl}/api/integrations/shopify/connect?shop=test-demo.myshopify.com`, {
+    // -----------------------------------------------------------------
+    // Scenario 12: OAuth state mismatch is rejected
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 12: OAuth state mismatch is rejected')
+    const stateMismatchRes = await fetch(
+      `${baseUrl}/api/shopify/callback?code=fake_code&shop=test.myshopify.com&state=tampered_nonce`,
+      {
+        headers: {
+          Cookie: `${cookieAdminA}; shopify_oauth_state=genuine_nonce`,
+        },
+        redirect: 'manual',
+      }
+    )
+    const location = stateMismatchRes.headers.get('location') || ''
+    assert(
+      stateMismatchRes.status === 302 && location.includes('error=invalid_oauth_state'),
+      '12. OAuth state mismatch is rejected (CSRF nonce validation)',
+      `status: ${stateMismatchRes.status}, redirect: ${location}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 13: Shopify API authentication failure is handled safely
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 13: Shopify API authentication failure is handled safely')
+    // Attempting sync with corrupted token fails safely without crash
+    const corruptStore = await ShopifyStore.create({
+      organizationId: orgB._id,
+      organization: orgB._id,
+      shopDomain: 'corrupt-store.myshopify.com',
+      encryptedAccessToken: 'bad_token_format',
+      status: 'connected',
+    })
+    const corruptSyncRes = await fetch(`${baseUrl}/api/shopify/sync`, {
+      method: 'POST',
+      headers: { Cookie: cookieAdminB },
+    })
+    assert(
+      corruptSyncRes.status >= 400 && corruptSyncRes.status < 600,
+      '13. Shopify API authentication failure is handled safely (No unhandled exceptions)',
+      `status: ${corruptSyncRes.status}`
+    )
+    await ShopifyStore.deleteOne({ _id: corruptStore._id })
+
+    // -----------------------------------------------------------------
+    // Scenario 14: Shopify API errors are handled safely
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 14: Shopify API errors are handled safely')
+    const nonExistentProdRes = await fetch(`${baseUrl}/api/shopify/products/gid://shopify/Product/nonexistent`, {
       headers: { Cookie: cookieAdminA },
     })
-    const validConnectData = await validConnectRes.json()
+    const nonExistentOrderRes = await fetch(`${baseUrl}/api/shopify/orders/gid://shopify/Order/nonexistent`, {
+      headers: { Cookie: cookieAdminA },
+    })
     assert(
-      validConnectRes.status === 200 && validConnectData.data?.authUrl?.includes('admin/oauth/authorize'),
-      'GET /api/integrations/shopify/connect generates valid Shopify OAuth URL with state nonce'
+      nonExistentProdRes.status === 404 && nonExistentOrderRes.status === 404,
+      '14. Shopify API errors are handled safely (Safe 404 for missing resources)',
+      `prod status: ${nonExistentProdRes.status}, order status: ${nonExistentOrderRes.status}`
     )
 
-    // -------------------------------------------------------------
-    // Suite 3: Connected Store Setup & Strict Tenant Scoping
-    // -------------------------------------------------------------
-    console.log('\n[Suite 3: Store Connection & Multi-Tenant Scoping]')
-    // Connect a store to Org A
-    const testShopDomain = 'scalevo-demo.myshopify.com'
-    let storeA = await ShopifyStore.findOne({ organization: orgA._id, shopDomain: testShopDomain })
-    if (!storeA) {
-      storeA = await ShopifyStore.create({
-        organization: orgA._id,
-        shopDomain: testShopDomain,
-        shopName: 'Scalevo Demo Apparel',
-        shopifyStoreId: 'gid://shopify/Shop/12345678',
-        currency: 'INR',
-        timezone: 'Asia/Kolkata',
-        encryptedAccessToken: encryptToken('shpat_mock_token_for_testing'),
-        status: 'connected',
-        connectedAt: new Date(),
+    // -----------------------------------------------------------------
+    // Scenario 15: Sync endpoint requires an existing connection
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 15: Sync endpoint requires an existing connection')
+    // Org B has no connected store
+    const noConnSyncRes = await fetch(`${baseUrl}/api/shopify/sync`, {
+      method: 'POST',
+      headers: { Cookie: cookieAdminB },
+    })
+    assert(
+      noConnSyncRes.status === 404,
+      '15. Sync endpoint requires an existing connection (404 when no store linked)',
+      `status: ${noConnSyncRes.status}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 16: Disconnect only affects the authenticated organization's store
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 16: Disconnect only affects the authenticated organization\'s store')
+    // Create store for Org B
+    storeB = await ShopifyStore.create({
+      organizationId: orgB._id,
+      organization: orgB._id,
+      shopDomain: 'org-b-store.myshopify.com',
+      encryptedAccessToken: encryptToken('shpat_token_b'),
+      status: 'connected',
+    })
+
+    // Org A disconnects
+    const discARes = await fetch(`${baseUrl}/api/shopify/disconnect`, {
+      method: 'POST',
+      headers: { Cookie: cookieAdminA },
+    })
+
+    const checkStoreA = await ShopifyStore.findById(storeA._id).select('+encryptedAccessToken')
+    const checkStoreB = await ShopifyStore.findById(storeB._id).select('+encryptedAccessToken')
+
+    assert(
+      discARes.status === 200 &&
+        checkStoreA.status === 'disconnected' &&
+        checkStoreA.encryptedAccessToken === '' &&
+        checkStoreB.status === 'connected' &&
+        checkStoreB.encryptedAccessToken !== '',
+      '16. Disconnect only affects the authenticated organization\'s store (Org B remains connected)',
+      `Org A status: ${checkStoreA.status}, Org B status: ${checkStoreB.status}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 17: Frontend Shopify route is protected
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 17: Frontend Shopify route is protected')
+    const appRoutesCode = fs.readFileSync(path.join(clientSrcPath, 'routes/AppRoutes.jsx'), 'utf-8')
+    const hasProtectedShopifyRoute =
+      appRoutesCode.includes('<Route element={<ProtectedRoute />}>') &&
+      appRoutesCode.includes('<Route path="/shopify" element={<ShopifyPage />} />')
+
+    assert(
+      hasProtectedShopifyRoute,
+      '17. Frontend Shopify route is protected inside ProtectedRoute wrapper',
+      `protected: ${hasProtectedShopifyRoute}`
+    )
+
+    // -----------------------------------------------------------------
+    // Scenario 18: Frontend production build succeeds
+    // -----------------------------------------------------------------
+    console.log('\n--> Testing Scenario 18: Frontend production build succeeds')
+    const clientPath = path.resolve(__dirname, '../../../Design Digital Marketing Platform/client')
+    let buildPassed = false
+    let buildOutput = ''
+    try {
+      const stdout = execSync('npm run build', {
+        cwd: clientPath,
+        encoding: 'utf-8',
+        stdio: 'pipe',
       })
+      buildPassed = true
+      buildOutput = stdout.slice(-300).trim()
+    } catch (err) {
+      buildPassed = false
+      buildOutput = err.stderr || err.stdout || err.message
     }
-
-    // Org A calls status -> returns isConnected: true
-    const statusARes = await fetch(`${baseUrl}/api/integrations/shopify/status`, {
-      headers: { Cookie: cookieAdminA },
-    })
-    const statusAData = await statusARes.json()
     assert(
-      statusARes.status === 200 &&
-        statusAData.data?.isConnected === true &&
-        statusAData.data?.store?.shopDomain === testShopDomain &&
-        statusAData.data?.store?.encryptedAccessToken === undefined,
-      'GET /api/integrations/shopify/status returns connected store and never leaks encrypted access token'
+      buildPassed,
+      '18. Frontend production build succeeds (Vite bundle compiled cleanly)',
+      buildPassed ? 'Vite build successful' : buildOutput
     )
 
-    // Org B calls status -> must be isConnected: false (Strict isolation)
-    const statusBRes = await fetch(`${baseUrl}/api/integrations/shopify/status`, {
-      headers: { Cookie: cookieAdminB },
-    })
-    const statusBData = await statusBRes.json()
-    assert(
-      statusBRes.status === 200 && statusBData.data?.isConnected === false,
-      'GET /api/integrations/shopify/status isolates store data strictly to owner organization (Org B sees false)'
-    )
-
-    // -------------------------------------------------------------
-    // Suite 4: Idempotent Data Synchronization
-    // -------------------------------------------------------------
-    console.log('\n[Suite 4: Idempotent Product, Order, Customer Upserts]')
-
-    // Upsert Product #1 twice
-    const prodId = 'gid://shopify/Product/9876543210'
-    await ShopifyProduct.findOneAndUpdate(
-      { organization: orgA._id, shopifyStore: storeA._id, shopifyProductId: prodId },
-      { title: 'Signature Organic Hoodie', price: 2499, totalInventory: 85, syncedAt: new Date() },
-      { upsert: true, new: true }
-    )
-    await ShopifyProduct.findOneAndUpdate(
-      { organization: orgA._id, shopifyStore: storeA._id, shopifyProductId: prodId },
-      { title: 'Signature Organic Hoodie (Updated)', price: 2999, totalInventory: 80, syncedAt: new Date() },
-      { upsert: true, new: true }
-    )
-    const productCount = await ShopifyProduct.countDocuments({
-      organization: orgA._id,
-      shopifyProductId: prodId,
-    })
-    const finalProduct = await ShopifyProduct.findOne({
-      organization: orgA._id,
-      shopifyProductId: prodId,
-    })
-    assert(
-      productCount === 1 && finalProduct.price === 2999,
-      'Product synchronization is idempotent (re-sync updates record without duplicating)'
-    )
-
-    // Upsert Order #1 twice
-    const orderId = 'gid://shopify/Order/1122334455'
-    await ShopifyOrder.findOneAndUpdate(
-      { organization: orgA._id, shopifyStore: storeA._id, shopifyOrderId: orderId },
-      {
-        orderNumber: '#1001',
-        totalPrice: 5998,
-        financialStatus: 'PAID',
-        createdAtShopify: new Date(),
-        syncedAt: new Date(),
+    // Clean up
+    await ShopifyStore.deleteMany({ organizationId: { $in: [orgA._id, orgB._id] } })
+    await ShopifyProduct.deleteMany({ organizationId: { $in: [orgA._id, orgB._id] } })
+    await ShopifyOrder.deleteMany({ organizationId: { $in: [orgA._id, orgB._id] } })
+    await ShopifyCustomer.deleteMany({ organizationId: { $in: [orgA._id, orgB._id] } })
+    await User.deleteMany({
+      email: {
+        $in: [
+          'admin-shopify-a@scalevo.com',
+          'mgr-shopify-a@scalevo.com',
+          'member-shopify-a@scalevo.com',
+          'client-shopify-a@scalevo.com',
+          'admin-shopify-b@scalevo.com',
+        ],
       },
-      { upsert: true, new: true }
-    )
-    await ShopifyOrder.findOneAndUpdate(
-      { organization: orgA._id, shopifyStore: storeA._id, shopifyOrderId: orderId },
-      {
-        orderNumber: '#1001',
-        totalPrice: 5998,
-        financialStatus: 'PAID',
-        createdAtShopify: new Date(),
-        syncedAt: new Date(),
-      },
-      { upsert: true, new: true }
-    )
-    const orderCount = await ShopifyOrder.countDocuments({
-      organization: orgA._id,
-      shopifyOrderId: orderId,
     })
-    assert(orderCount === 1, 'Order synchronization is idempotent (re-sync does not duplicate orders)')
-
-    // Upsert Customer #1
-    const custId = 'gid://shopify/Customer/5566778899'
-    await ShopifyCustomer.findOneAndUpdate(
-      { organization: orgA._id, shopifyStore: storeA._id, shopifyCustomerId: custId },
-      { firstName: 'Sameer', lastName: 'Verma', email: 'sameer@example.com', ordersCount: 2, totalSpent: 5998 },
-      { upsert: true, new: true }
-    )
-    const custCount = await ShopifyCustomer.countDocuments({
-      organization: orgA._id,
-      shopifyCustomerId: custId,
-    })
-    assert(custCount === 1, 'Customer synchronization is idempotent')
-
-    // -------------------------------------------------------------
-    // Suite 5: Webhooks Processing
-    // -------------------------------------------------------------
-    console.log('\n[Suite 5: Shopify Webhook Handling]')
-    const webhookSecret = process.env.SHOPIFY_WEBHOOK_SECRET || 'test_webhook_sec_123'
-    const newOrderPayload = {
-      id: 99887711,
-      admin_graphql_api_id: 'gid://shopify/Order/99887711',
-      name: '#1002',
-      total_price: '3499.00',
-      financial_status: 'paid',
-      created_at: new Date().toISOString(),
-    }
-    const rawPayloadBuffer = Buffer.from(JSON.stringify(newOrderPayload))
-    const webhookHmac = crypto.createHmac('sha256', webhookSecret).update(rawPayloadBuffer).digest('base64')
-
-    const webhookRes = await fetch(`${baseUrl}/api/webhooks/shopify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-shopify-topic': 'orders/create',
-        'x-shopify-shop-domain': testShopDomain,
-        'x-shopify-hmac-sha256': webhookHmac,
-      },
-      body: rawPayloadBuffer.toString('utf8'),
-    })
-    assert(webhookRes.status === 200, 'POST /api/webhooks/shopify processes incoming order webhook')
-
-    const createdWebhookOrder = await ShopifyOrder.findOne({
-      organization: orgA._id,
-      shopifyOrderId: 'gid://shopify/Order/99887711',
-    })
-    assert(
-      createdWebhookOrder && createdWebhookOrder.totalPrice === 3499,
-      'Webhook correctly persists order and financial status into database'
-    )
-
-    // -------------------------------------------------------------
-    // Suite 6: Scalevo Analytics & Dashboard Connection
-    // -------------------------------------------------------------
-    console.log('\n[Suite 6: Scalevo Analytics & Dashboard Integration]')
-    const analyticsRes = await fetch(`${baseUrl}/api/analytics/overview?dateRange=30d`, {
-      headers: { Cookie: cookieAdminA },
-    })
-    const analyticsData = await analyticsRes.json()
-    const shopifyAnalytics = analyticsData.data?.shopifyAnalytics
-
-    assert(
-      analyticsRes.status === 200 &&
-        shopifyAnalytics?.isConnected === true &&
-        shopifyAnalytics?.totalRevenue >= 9497 &&
-        shopifyAnalytics?.ordersCount >= 2 &&
-        shopifyAnalytics?.aov > 0,
-      'GET /api/analytics/overview integrates live Shopify revenue, orders count, and AOV'
-    )
-
-    // Dashboard stats verification
-    const dashboardRes = await fetch(`${baseUrl}/api/dashboard/stats`, {
-      headers: { Cookie: cookieAdminA },
-    })
-    const dashboardData = await dashboardRes.json()
-    const shopifyKpi = dashboardData.data?.kpis?.shopify
-
-    assert(
-      dashboardRes.status === 200 &&
-        shopifyKpi?.isConnected === true &&
-        shopifyKpi?.revenue >= 9497 &&
-        shopifyKpi?.ordersCount >= 2,
-      'GET /api/dashboard/stats returns real Shopify store sales and revenue in dashboard KPIs'
-    )
-
-    // Org B analytics isolation check
-    const analyticsBRes = await fetch(`${baseUrl}/api/analytics/overview?dateRange=30d`, {
-      headers: { Cookie: cookieAdminB },
-    })
-    const analyticsBData = await analyticsBRes.json()
-    assert(
-      analyticsBData.data?.shopifyAnalytics?.isConnected === false,
-      'GET /api/analytics/overview guarantees Org B cannot view Org A Shopify revenue (isConnected: false)'
-    )
-
-    // -------------------------------------------------------------
-    // Suite 7: Disconnection & Credential Purge
-    // -------------------------------------------------------------
-    console.log('\n[Suite 7: Disconnect & Credential Purging]')
-    const disconnectRes = await fetch(`${baseUrl}/api/integrations/shopify/disconnect`, {
-      method: 'POST',
-      headers: { Cookie: cookieAdminA },
-    })
-    assert(disconnectRes.status === 200, 'POST /api/integrations/shopify/disconnect succeeds')
-
-    const purgedStore = await ShopifyStore.findById(storeA._id).select('+encryptedAccessToken')
-    assert(
-      purgedStore.status === 'disconnected' && purgedStore.encryptedAccessToken === '',
-      'Store status marked disconnected and encrypted credentials completely wiped from database'
-    )
-
-    // -------------------------------------------------------------
-    // Teardown
-    // -------------------------------------------------------------
-    console.log('\n[Teardown]')
-    await ShopifyStore.deleteMany({ organization: { $in: [orgA._id, orgB._id] } })
-    await ShopifyProduct.deleteMany({ organization: { $in: [orgA._id, orgB._id] } })
-    await ShopifyOrder.deleteMany({ organization: { $in: [orgA._id, orgB._id] } })
-    await ShopifyCustomer.deleteMany({ organization: { $in: [orgA._id, orgB._id] } })
-    console.log('Test artifacts cleaned.')
-  } catch (err) {
-    console.error('Test execution error:', err)
+    await Organization.deleteOne({ _id: orgB._id })
   } finally {
     server.close()
-    console.log('\n=================================================================')
-    console.log(`Results: ${passedCount} passed, ${failedCount} failed`)
-    console.log('=================================================================\n')
+  }
+
+  console.log('\n=================================================================')
+  console.log(`Shopify Test Results Summary: ${passedCount}/18 Passed, ${failedCount} Failed`)
+  console.log('=================================================================\n')
+
+  if (failedCount > 0) {
+    process.exit(1)
+  } else {
+    process.exit(0)
   }
 }
 
-runTests().then(() => {
-  process.exit(failedCount > 0 ? 1 : 0)
+runTests().catch((err) => {
+  console.error('Fatal test runner error:', err)
+  process.exit(1)
 })

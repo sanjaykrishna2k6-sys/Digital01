@@ -1,0 +1,10 @@
+{
+  "name": "digital-marketing-platform",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd \"Design Digital Marketing Platform/client\" && npm install && npm run build",
+    "dev": "cd \"Design Digital Marketing Platform/client\" && npm run dev",
+    "start": "cd \"Design Digital Marketing Platform/client\" && npm run preview"
+  }
+}

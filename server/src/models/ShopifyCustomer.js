@@ -2,10 +2,14 @@ import mongoose from 'mongoose'
 
 const shopifyCustomerSchema = new mongoose.Schema(
   {
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      index: true,
+    },
     organization: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
-      required: [true, 'Organization reference is required'],
       index: true,
     },
     shopifyStore: {
@@ -50,7 +54,7 @@ const shopifyCustomerSchema = new mongoose.Schema(
     },
     currency: {
       type: String,
-      default: 'INR',
+      default: 'USD',
     },
     createdAtShopify: {
       type: Date,
@@ -72,10 +76,27 @@ const shopifyCustomerSchema = new mongoose.Schema(
   }
 )
 
+// Pre-validate hook to sync organization and organizationId bidirectionally
+shopifyCustomerSchema.pre('validate', function (next) {
+  if (this.organization && !this.organizationId) {
+    this.organizationId = this.organization
+  } else if (this.organizationId && !this.organization) {
+    this.organization = this.organizationId
+  }
+
+  if (!this.organization && !this.organizationId) {
+    return next(new Error('Organization reference is required'))
+  }
+  next()
+})
+
 // Compound unique index for idempotent customer synchronization
 shopifyCustomerSchema.index(
   { organization: 1, shopifyStore: 1, shopifyCustomerId: 1 },
   { unique: true }
+)
+shopifyCustomerSchema.index(
+  { organizationId: 1, shopifyStore: 1, shopifyCustomerId: 1 }
 )
 
 const ShopifyCustomer = mongoose.model('ShopifyCustomer', shopifyCustomerSchema)

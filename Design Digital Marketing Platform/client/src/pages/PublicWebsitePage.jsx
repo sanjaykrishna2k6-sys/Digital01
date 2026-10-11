@@ -31,7 +31,7 @@ const results = [
 const testimonials = [
   {
     name: 'Rohit Kapoor', role: 'Founder, FreshMart', initials: 'RK',
-    text: 'Scalevo helped us go from ₹2L to ₹18L in monthly revenue from digital channels in under 6 months. Exceptional team.',
+    text: 'Krishpo helped us go from ₹2L to ₹18L in monthly revenue from digital channels in under 6 months. Exceptional team.',
   },
   {
     name: 'Priya Mehta', role: 'CMO, TechNova Pvt. Ltd', initials: 'PM',
@@ -39,7 +39,7 @@ const testimonials = [
   },
   {
     name: 'Arjun Sharma', role: 'Director, Urban Homes', initials: 'AS',
-    text: 'Our cost per lead dropped by 40% in the first quarter. The Scalevo team treats our business like their own.',
+    text: 'Our cost per lead dropped by 40% in the first quarter. The Krishpo team treats our business like their own.',
   },
 ]
 
@@ -71,7 +71,7 @@ export function PublicWebsitePage() {
             <div style={{ width: 34, height: 34, background: '#4F46E5', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Zap size={16} color="#fff" fill="#fff" />
             </div>
-            <span style={{ fontSize: 17, fontWeight: 800, color: '#111827', letterSpacing: '-0.01em' }}>Scalevo</span>
+            <span style={{ fontSize: 17, fontWeight: 800, color: '#111827', letterSpacing: '-0.01em' }}>Krishpo</span>
           </div>
 
           <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
@@ -127,7 +127,7 @@ export function PublicWebsitePage() {
               ))}
             </div>
             <div style={{ fontSize: 13, color: '#6B7280' }}>
-              <strong style={{ color: '#111827' }}>200+ businesses</strong> trust Scalevo for their digital growth
+              <strong style={{ color: '#111827' }}>200+ businesses</strong> trust Krishpo for their digital growth
             </div>
           </div>
         </div>
@@ -273,7 +273,7 @@ export function PublicWebsitePage() {
                 <div style={{ width: 30, height: 30, background: '#4F46E5', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Zap size={14} color="#fff" fill="#fff" />
                 </div>
-                <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Scalevo</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Krishpo</span>
               </div>
               <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.6, maxWidth: 280, margin: 0 }}>
                 India's premium digital marketing agency platform. Helping businesses generate qualified leads and measurable ROI.
@@ -293,7 +293,7 @@ export function PublicWebsitePage() {
             ))}
           </div>
           <div style={{ borderTop: '1px solid #1E293B', paddingTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-            <p style={{ fontSize: 12, color: '#475569', margin: 0 }}>© 2024 Scalevo Digital Pvt. Ltd. All rights reserved.</p>
+            <p style={{ fontSize: 12, color: '#475569', margin: 0 }}>© 2024 Krishpo Digital Pvt. Ltd. All rights reserved.</p>
             <p style={{ fontSize: 12, color: '#475569', margin: 0 }}>Made with ♥ in Mumbai, India</p>
           </div>
         </div>

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Zap, TrendingUp, Users, BarChart3, AlertCircle, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { useAuth } from '../context/AuthContext'
 
 export function SignupPage() {
   const navigate = useNavigate()
-  const { signup, isAuthenticated } = useAuth()
+  const location = useLocation()
+  const { signup, user, isAuthenticated } = useAuth()
 
   const [form, setForm] = useState({
     name: '',
@@ -26,9 +27,25 @@ export function SignupPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+      const target = user?.role === 'client' ? '/portal' : '/dashboard'
+      navigate(target, { replace: true })
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, user, navigate])
+
+  // Check for error in query parameters (e.g. from OAuth redirect)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const err = params.get('error')
+    if (err) {
+      const errorMap = {
+        google_oauth_not_configured: 'Google Sign-In is not configured yet. Please sign up using the form below.',
+        invalid_oauth_state: 'Google authentication session expired or was invalid. Please try again.',
+        missing_auth_code: 'Google authentication failed to return an authorization code.',
+        unverified_google_email: 'Your Google email address is unverified. Please verify your Google account first.',
+      }
+      setAuthError(errorMap[err] || `Authentication error: ${err}`)
+    }
+  }, [location.search])
 
   const validate = () => {
     const errors = {}
@@ -80,13 +97,15 @@ export function SignupPage() {
 
     setIsLoading(true)
     try {
-      await signup({
+      const res = await signup({
         name: form.name.trim(),
         email: form.email.toLowerCase().trim(),
         organizationName: form.organizationName.trim(),
         password: form.password,
       })
-      navigate('/dashboard', { replace: true })
+      const loggedUser = res?.data?.user
+      const target = loggedUser?.role === 'client' ? '/portal' : '/dashboard'
+      navigate(target, { replace: true })
     } catch (err) {
       setAuthError(err.message || 'Failed to create your account. Please try again.')
     } finally {
@@ -117,7 +136,6 @@ export function SignupPage() {
     { icon: BarChart3, value: '98%', label: 'Retention Rate' },
   ]
 
-  // Password rules checklist
   const passwordChecks = [
     { label: 'At least 10 characters', met: form.password.length >= 10 },
     { label: 'Contains letters & numbers', met: /[a-zA-Z]/.test(form.password) && /[0-9]/.test(form.password) },
@@ -135,7 +153,7 @@ export function SignupPage() {
           </div>
           <div>
             <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Scalevo</p>
-            <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Agency Management Suite</p>
+            <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Digital Marketing Platform</p>
           </div>
         </div>
 
@@ -179,7 +197,7 @@ export function SignupPage() {
             </div>
             <div>
               <p style={{ fontSize: 13, fontWeight: 600, color: '#fff', margin: 0 }}>Priya Menon</p>
-              <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Managing Partner, GrowthLab, Bengaluru</p>
+              <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Managing Partner, GrowthLab</p>
             </div>
           </div>
         </div>

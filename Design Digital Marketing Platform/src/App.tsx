@@ -6,7 +6,6 @@ import DesignSystem from './pages/DesignSystem'
 import PublicWebsite from './pages/PublicWebsite'
 
 const PAGES = [
-  { id: 'design-system', label: 'Design System' },
   { id: 'auth', label: 'Authentication' },
   { id: 'agency', label: 'Agency Dashboard' },
   { id: 'client', label: 'Client Portal' },

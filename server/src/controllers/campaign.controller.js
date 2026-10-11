@@ -1,40 +1,132 @@
 import mongoose from 'mongoose'
-import Campaign from '../models/Campaign.js'
+import Campaign, { CAMPAIGN_STATUSES, CAMPAIGN_TYPES } from '../models/Campaign.js'
+import Client from '../models/Client.js'
+import User from '../models/User.js'
+import { validateCampaignInput, validateCampaignUpdateInput } from '../validators/campaign.validator.js'
 
 /**
- * GET /api/campaigns
- * List campaigns scoped to organization.
+ * Normalize status strings to capitalized format (e.g. 'active' -> 'Active')
  */
-export async function getCampaigns(req, res, next) {
+function normalizeStatus(status) {
+  if (!status) return 'Draft'
+  const trimmed = String(status).trim()
+  const found = CAMPAIGN_STATUSES.find((s) => s.toLowerCase() === trimmed.toLowerCase())
+  if (!found) return trimmed
+  return found.charAt(0).toUpperCase() + found.slice(1).toLowerCase()
+}
+
+/**
+ * Validate status transition according to Step 12 business rules
+ */
+function isValidStatusTransition(currentStatus, newStatus) {
+  const cur = normalizeStatus(currentStatus).toLowerCase()
+  const next = normalizeStatus(newStatus).toLowerCase()
+
+  if (cur === next) return true
+
+  const transitions = {
+    draft: ['planned', 'active', 'cancelled'],
+    planned: ['active', 'paused', 'cancelled', 'draft'],
+    active: ['paused', 'completed', 'cancelled'],
+    paused: ['active', 'completed', 'cancelled'],
+    completed: ['active', 'paused', 'cancelled'],
+    cancelled: ['draft', 'planned', 'active'],
+  }
+
+  return transitions[cur] ? transitions[cur].includes(next) : true
+}
+
+/**
+ * POST /api/campaigns
+ * Create a new campaign strictly scoped to the authenticated organization.
+ */
+export async function createCampaign(req, res, next) {
   try {
-    const { search, status, channel } = req.query
+    const rawData = req.body || {}
 
-    const filter = {
+    // Explicit validation check
+    const validation = validateCampaignInput(rawData)
+    if (!validation.isValid) {
+      return res.status(400).json({
+        status: 'fail',
+        message: validation.errors[0],
+        errors: validation.errors,
+      })
+    }
+
+    const clientId = rawData.clientId || rawData.client
+
+    // Verify client exists and belongs strictly to the authenticated organization
+    const client = await Client.findOne({
+      _id: clientId,
+      organizationId: req.organizationId,
+    })
+
+    if (!client) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Referenced client does not exist or does not belong to your organization.',
+      })
+    }
+
+    // Verify campaign manager if supplied belongs strictly to the authenticated organization
+    const managerId = rawData.campaignManager || rawData.assignedTo
+    if (managerId) {
+      const managerUser = await User.findOne({
+        _id: managerId,
+        organization: req.organizationId,
+      })
+      if (!managerUser) {
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Assigned campaign manager does not belong to your organization.',
+        })
+      }
+    }
+
+    // Derive and sanitize campaign data
+    const campaignType = rawData.campaignType || rawData.channel || 'SEO'
+    const status = normalizeStatus(rawData.status || 'Draft')
+    const channels = Array.isArray(rawData.channels)
+      ? rawData.channels
+      : rawData.channels
+      ? [rawData.channels]
+      : [campaignType]
+
+    const campaign = await Campaign.create({
+      organizationId: req.organizationId,
       organization: req.organizationId,
-    }
+      clientId: client._id,
+      client: client._id,
+      name: rawData.name.trim(),
+      description: rawData.description ? String(rawData.description).trim() : '',
+      campaignType,
+      channel: campaignType,
+      status,
+      startDate: new Date(rawData.startDate),
+      endDate: new Date(rawData.endDate),
+      budget: Number(rawData.budget),
+      currency: (rawData.currency || 'USD').toUpperCase().trim(),
+      campaignManager: managerId || null,
+      assignedTo: managerId || null,
+      goals: rawData.goals ? String(rawData.goals).trim() : '',
+      KPIs: rawData.KPIs || {},
+      targetAudience: rawData.targetAudience ? String(rawData.targetAudience).trim() : '',
+      channels,
+      notes: rawData.notes ? String(rawData.notes).trim() : '',
+      createdBy: req.user._id,
+      metrics: rawData.metrics || {},
+    })
 
-    if (status && status !== 'all') {
-      filter.status = status
-    }
+    const populated = await Campaign.findById(campaign._id)
+      .populate('clientId', 'companyName contactName email industry website')
+      .populate('campaignManager', 'name email role avatar')
+      .populate('createdBy', 'name email role')
 
-    if (channel && channel !== 'all') {
-      filter.channel = channel
-    }
-
-    if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i')
-      filter.$or = [{ name: searchRegex }, { description: searchRegex }]
-    }
-
-    const campaigns = await Campaign.find(filter)
-      .populate('assignedTo', 'name email avatar')
-      .sort({ createdAt: -1 })
-
-    res.status(200).json({
+    res.status(201).json({
       status: 'success',
-      results: campaigns.length,
       data: {
-        campaigns,
+        campaign: populated,
       },
     })
   } catch (err) {
@@ -43,8 +135,195 @@ export async function getCampaigns(req, res, next) {
 }
 
 /**
+ * GET /api/campaigns
+ * List campaigns scoped to authenticated organization with search, filtering, and pagination.
+ */
+export async function listCampaigns(req, res, next) {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      status,
+      campaignType,
+      channel,
+      clientId,
+      campaignManager,
+      startDate,
+      endDate,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = req.query
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1)
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20))
+    const skip = (pageNum - 1) * limitNum
+
+    // Always scope to the authenticated organization
+    const filter = {
+      organizationId: req.organizationId,
+    }
+
+    // Role-based scoping for client users
+    if (req.user?.role === 'client') {
+      // If user has a linked client document, scope to their clientId
+      if (req.user.clientId) {
+        filter.clientId = req.user.clientId
+      }
+    }
+
+    // Status filter
+    if (status && status !== 'all') {
+      const norm = normalizeStatus(status)
+      filter.$or = [
+        { status: norm },
+        { status: norm.toLowerCase() },
+      ]
+    }
+
+    // Campaign Type / Channel filter
+    const activeType = campaignType || channel
+    if (activeType && activeType !== 'all') {
+      filter.$or = [
+        { campaignType: activeType },
+        { channel: activeType },
+        { channels: activeType },
+      ]
+    }
+
+    // Client filter
+    if (clientId && clientId !== 'all') {
+      if (mongoose.Types.ObjectId.isValid(clientId)) {
+        filter.clientId = clientId
+      }
+    }
+
+    // Campaign Manager filter
+    if (campaignManager && campaignManager !== 'all') {
+      if (mongoose.Types.ObjectId.isValid(campaignManager)) {
+        filter.$or = [
+          { campaignManager: campaignManager },
+          { assignedTo: campaignManager },
+        ]
+      }
+    }
+
+    // Date range filter
+    if (startDate) {
+      const d = new Date(startDate)
+      if (!isNaN(d.getTime())) {
+        filter.startDate = { $gte: d }
+      }
+    }
+    if (endDate) {
+      const d = new Date(endDate)
+      if (!isNaN(d.getTime())) {
+        filter.endDate = { ...filter.endDate, $lte: d }
+      }
+    }
+
+    // Text search on name, description, campaignType
+    if (search && search.trim()) {
+      const sanitized = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const regex = new RegExp(sanitized, 'i')
+
+      // Also search client names in this organization
+      const matchingClients = await Client.find({
+        organizationId: req.organizationId,
+        companyName: regex,
+      }).select('_id')
+      const matchingClientIds = matchingClients.map((c) => c._id)
+
+      const searchConditions = [
+        { name: regex },
+        { description: regex },
+        { campaignType: regex },
+        { channel: regex },
+      ]
+      if (matchingClientIds.length > 0) {
+        searchConditions.push({ clientId: { $in: matchingClientIds } })
+      }
+
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchConditions }]
+        delete filter.$or
+      } else {
+        filter.$or = searchConditions
+      }
+    }
+
+    // Sorting
+    const sort = {}
+    const allowedSortFields = ['name', 'budget', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt'
+    sort[sortField] = sortOrder === 'asc' ? 1 : -1
+
+    // Execute queries in parallel
+    const [campaigns, total, allOrgCampaigns] = await Promise.all([
+      Campaign.find(filter)
+        .populate('clientId', 'companyName contactName email industry website')
+        .populate('campaignManager', 'name email role avatar')
+        .populate('createdBy', 'name email')
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNum),
+      Campaign.countDocuments(filter),
+      Campaign.find({ organizationId: req.organizationId }).select('status budget'),
+    ])
+
+    // Compute aggregated KPI metrics for current tenant
+    let totalBudget = 0
+    let activeCount = 0
+    let plannedCount = 0
+    let completedCount = 0
+    let pausedCount = 0
+    let draftCount = 0
+
+    allOrgCampaigns.forEach((c) => {
+      totalBudget += Number(c.budget) || 0
+      const st = String(c.status || '').toLowerCase()
+      if (st === 'active') activeCount++
+      else if (st === 'planned' || st === 'scheduled') plannedCount++
+      else if (st === 'completed') completedCount++
+      else if (st === 'paused') pausedCount++
+      else if (st === 'draft') draftCount++
+    })
+
+    const totalPages = Math.ceil(total / limitNum) || 1
+
+    res.status(200).json({
+      status: 'success',
+      results: campaigns.length,
+      data: {
+        campaigns,
+        metrics: {
+          total: allOrgCampaigns.length,
+          active: activeCount,
+          planned: plannedCount,
+          completed: completedCount,
+          paused: pausedCount,
+          draft: draftCount,
+          totalBudget: Math.round(totalBudget * 100) / 100,
+        },
+      },
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// Backward-compatible alias
+export const getCampaigns = listCampaigns
+
+/**
  * GET /api/campaigns/:id
- * Retrieve single campaign by ID scoped to organization.
+ * Retrieve a single campaign by ID strictly within authenticated organization.
  */
 export async function getCampaignById(req, res, next) {
   try {
@@ -59,13 +338,16 @@ export async function getCampaignById(req, res, next) {
 
     const campaign = await Campaign.findOne({
       _id: id,
-      organization: req.organizationId,
-    }).populate('assignedTo', 'name email avatar role')
+      organizationId: req.organizationId,
+    })
+      .populate('clientId', 'companyName contactName email phone industry website address')
+      .populate('campaignManager', 'name email role avatar')
+      .populate('createdBy', 'name email role')
 
     if (!campaign) {
       return res.status(404).json({
         status: 'fail',
-        message: 'Campaign not found in your organization workspace.',
+        message: 'Campaign not found.',
       })
     }
 
@@ -81,125 +363,116 @@ export async function getCampaignById(req, res, next) {
 }
 
 /**
- * POST /api/campaigns
- * Create a new campaign scoped to caller's organization.
- */
-export async function createCampaign(req, res, next) {
-  try {
-    const {
-      name,
-      description,
-      channel,
-      status,
-      startDate,
-      endDate,
-      budget,
-      spent,
-      targetAudience,
-      goals,
-      assignedTo,
-      metrics,
-    } = req.body
-
-    const campaign = await Campaign.create({
-      organization: req.organizationId,
-      name: name.trim(),
-      description: description ? description.trim() : '',
-      channel: channel || 'Meta Ads',
-      status: status || 'active',
-      startDate: startDate ? new Date(startDate) : new Date(),
-      endDate: endDate ? new Date(endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      budget: Number(budget || 0),
-      spent: spent ? Number(spent) : 0,
-      targetAudience: targetAudience ? targetAudience.trim() : '',
-      goals: goals ? goals.trim() : '',
-      assignedTo: assignedTo && mongoose.Types.ObjectId.isValid(assignedTo) ? assignedTo : null,
-      metrics: metrics || {
-        impressions: 0,
-        reach: 0,
-        clicks: 0,
-        leads: 0,
-        conversions: 0,
-        spend: spent ? Number(spent) : 0,
-        revenue: 0,
-      },
-    })
-
-    const populated = await Campaign.findById(campaign._id).populate('assignedTo', 'name email avatar')
-
-    res.status(201).json({
-      status: 'success',
-      message: 'Campaign created successfully.',
-      data: {
-        campaign: populated,
-      },
-    })
-  } catch (err) {
-    next(err)
-  }
-}
-
-/**
- * PATCH /api/campaigns/:id
- * Update campaign details.
+ * PUT /api/campaigns/:id or PATCH /api/campaigns/:id
+ * Update campaign details strictly within authenticated organization.
  */
 export async function updateCampaign(req, res, next) {
   try {
     const { id } = req.params
+    const rawData = req.body || {}
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid campaign ID format.',
+      })
+    }
+
+    const validation = validateCampaignUpdateInput(rawData)
+    if (!validation.isValid) {
+      return res.status(400).json({
+        status: 'fail',
+        message: validation.errors[0],
+        errors: validation.errors,
+      })
+    }
+
+    // Verify campaign exists in this organization
     const campaign = await Campaign.findOne({
       _id: id,
-      organization: req.organizationId,
+      organizationId: req.organizationId,
     })
 
     if (!campaign) {
       return res.status(404).json({
         status: 'fail',
-        message: 'Campaign not found in your organization workspace.',
+        message: 'Campaign not found.',
       })
     }
 
-    const {
-      name,
-      description,
-      channel,
-      status,
-      startDate,
-      endDate,
-      budget,
-      spent,
-      targetAudience,
-      goals,
-      assignedTo,
-      metrics,
-    } = req.body
-
-    if (name) campaign.name = name.trim()
-    if (description !== undefined) campaign.description = description.trim()
-    if (channel) campaign.channel = channel
-    if (status) campaign.status = status
-    if (startDate) campaign.startDate = new Date(startDate)
-    if (endDate) campaign.endDate = new Date(endDate)
-    if (budget !== undefined) campaign.budget = Number(budget)
-    if (spent !== undefined) campaign.spent = Number(spent)
-    if (targetAudience !== undefined) campaign.targetAudience = targetAudience.trim()
-    if (goals !== undefined) campaign.goals = goals.trim()
-    if (assignedTo !== undefined) {
-      campaign.assignedTo = assignedTo && mongoose.Types.ObjectId.isValid(assignedTo) ? assignedTo : null
+    // If updating client, verify target client belongs to this organization
+    if (rawData.clientId) {
+      const client = await Client.findOne({
+        _id: rawData.clientId,
+        organizationId: req.organizationId,
+      })
+      if (!client) {
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Referenced client does not exist or does not belong to your organization.',
+        })
+      }
+      campaign.clientId = client._id
+      campaign.client = client._id
     }
-    if (metrics) {
-      campaign.metrics = { ...campaign.metrics, ...metrics }
+
+    // If updating campaign manager, verify belongs to this organization
+    const managerId = rawData.campaignManager || rawData.assignedTo
+    if (managerId !== undefined) {
+      if (managerId === null || managerId === '') {
+        campaign.campaignManager = null
+        campaign.assignedTo = null
+      } else {
+        const managerUser = await User.findOne({
+          _id: managerId,
+          organization: req.organizationId,
+        })
+        if (!managerUser) {
+          return res.status(400).json({
+            status: 'fail',
+            message: 'Assigned campaign manager does not belong to your organization.',
+          })
+        }
+        campaign.campaignManager = managerUser._id
+        campaign.assignedTo = managerUser._id
+      }
+    }
+
+    // Assign updatable fields
+    if (rawData.name !== undefined) campaign.name = rawData.name.trim()
+    if (rawData.description !== undefined) campaign.description = String(rawData.description).trim()
+    if (rawData.campaignType !== undefined) {
+      campaign.campaignType = rawData.campaignType.trim()
+      campaign.channel = rawData.campaignType.trim()
+    }
+    if (rawData.budget !== undefined) campaign.budget = Number(rawData.budget)
+    if (rawData.currency !== undefined) campaign.currency = String(rawData.currency).toUpperCase().trim()
+    if (rawData.startDate !== undefined) campaign.startDate = new Date(rawData.startDate)
+    if (rawData.endDate !== undefined) campaign.endDate = new Date(rawData.endDate)
+    if (rawData.goals !== undefined) campaign.goals = String(rawData.goals).trim()
+    if (rawData.KPIs !== undefined) campaign.KPIs = rawData.KPIs
+    if (rawData.targetAudience !== undefined) campaign.targetAudience = String(rawData.targetAudience).trim()
+    if (rawData.channels !== undefined) {
+      campaign.channels = Array.isArray(rawData.channels) ? rawData.channels : [rawData.channels]
+    }
+    if (rawData.notes !== undefined) campaign.notes = String(rawData.notes).trim()
+    if (rawData.metrics !== undefined) campaign.metrics = { ...campaign.metrics, ...rawData.metrics }
+    if (rawData.status !== undefined) {
+      const newStatus = normalizeStatus(rawData.status)
+      campaign.status = newStatus
     }
 
     await campaign.save()
 
-    const populated = await Campaign.findById(campaign._id).populate('assignedTo', 'name email avatar')
+    const updated = await Campaign.findById(campaign._id)
+      .populate('clientId', 'companyName contactName email industry website')
+      .populate('campaignManager', 'name email role avatar')
+      .populate('createdBy', 'name email')
 
     res.status(200).json({
       status: 'success',
-      message: 'Campaign updated successfully.',
       data: {
-        campaign: populated,
+        campaign: updated,
       },
     })
   } catch (err) {
@@ -209,38 +482,68 @@ export async function updateCampaign(req, res, next) {
 
 /**
  * PATCH /api/campaigns/:id/status
- * Quick update of campaign status.
+ * Update campaign status with transition validation.
  */
 export async function updateCampaignStatus(req, res, next) {
   try {
     const { id } = req.params
-    const { status } = req.body
+    const { status } = req.body || {}
 
-    if (!status) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid campaign ID format.',
+      })
+    }
+
+    if (!status || typeof status !== 'string' || !status.trim()) {
       return res.status(400).json({
         status: 'fail',
         message: 'Status is required.',
       })
     }
 
-    const campaign = await Campaign.findOneAndUpdate(
-      { _id: id, organization: req.organizationId },
-      { status },
-      { new: true }
-    ).populate('assignedTo', 'name email avatar')
+    const campaign = await Campaign.findOne({
+      _id: id,
+      organizationId: req.organizationId,
+    })
 
     if (!campaign) {
       return res.status(404).json({
         status: 'fail',
-        message: 'Campaign not found in your organization workspace.',
+        message: 'Campaign not found.',
       })
     }
 
+    const norm = normalizeStatus(status)
+    const validMatch = CAMPAIGN_STATUSES.find((s) => s.toLowerCase() === norm.toLowerCase())
+    if (!validMatch) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid campaign status value.',
+      })
+    }
+
+    // Step 12: Transition validation
+    if (!isValidStatusTransition(campaign.status, norm)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: `Invalid status transition from ${campaign.status} to ${norm}.`,
+      })
+    }
+
+    campaign.status = norm
+    await campaign.save()
+
+    const updated = await Campaign.findById(campaign._id)
+      .populate('clientId', 'companyName contactName email industry website')
+      .populate('campaignManager', 'name email role avatar')
+      .populate('createdBy', 'name email')
+
     res.status(200).json({
       status: 'success',
-      message: `Campaign status updated to ${status}.`,
       data: {
-        campaign,
+        campaign: updated,
       },
     })
   } catch (err) {
@@ -250,27 +553,125 @@ export async function updateCampaignStatus(req, res, next) {
 
 /**
  * DELETE /api/campaigns/:id
- * Delete campaign.
+ * Delete a campaign strictly within authenticated organization.
  */
 export async function deleteCampaign(req, res, next) {
   try {
     const { id } = req.params
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid campaign ID format.',
+      })
+    }
+
     const campaign = await Campaign.findOneAndDelete({
       _id: id,
-      organization: req.organizationId,
+      organizationId: req.organizationId,
     })
 
     if (!campaign) {
       return res.status(404).json({
         status: 'fail',
-        message: 'Campaign not found in your organization workspace.',
+        message: 'Campaign not found.',
       })
     }
 
     res.status(200).json({
       status: 'success',
       message: 'Campaign deleted successfully.',
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * GET /api/campaigns/:id/statistics
+ * Calculate and return campaign statistics, pacing, and KPIs.
+ */
+export async function getCampaignStatistics(req, res, next) {
+  try {
+    const { id } = req.params
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid campaign ID format.',
+      })
+    }
+
+    const campaign = await Campaign.findOne({
+      _id: id,
+      organizationId: req.organizationId,
+    })
+
+    if (!campaign) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Campaign not found.',
+      })
+    }
+
+    const m = campaign.metrics || {}
+    const budget = Number(campaign.budget) || 0
+    const spend = Number(m.spend) || 0
+    const impressions = Number(m.impressions) || 0
+    const reach = Number(m.reach) || 0
+    const clicks = Number(m.clicks) || 0
+    const conversions = Number(m.conversions) || 0
+    const revenue = Number(m.revenue) || 0
+
+    // Computed Performance Metrics
+    const budgetRemaining = Math.max(0, budget - spend)
+    const budgetPacing = budget > 0 ? Math.min(100, (spend / budget) * 100) : 0
+    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
+    const cpc = clicks > 0 ? spend / clicks : 0
+    const cpa = conversions > 0 ? spend / conversions : 0
+    const conversionRate = clicks > 0 ? (conversions / clicks) * 100 : 0
+    const roas = spend > 0 ? revenue / spend : 0
+    const roi = spend > 0 ? ((revenue - spend) / spend) * 100 : 0
+
+    // Duration and Daily Pacing
+    const now = new Date()
+    const start = new Date(campaign.startDate)
+    const end = new Date(campaign.endDate)
+    const totalDays = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)))
+    const daysElapsed = Math.max(0, Math.min(totalDays, Math.ceil((now - start) / (1000 * 60 * 60 * 24))))
+    const daysRemaining = Math.max(0, totalDays - daysElapsed)
+    const targetDailySpend = budget / totalDays
+    const actualDailySpend = daysElapsed > 0 ? spend / daysElapsed : 0
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        statistics: {
+          budget,
+          currency: campaign.currency || 'USD',
+          spend: Math.round(spend * 100) / 100,
+          budgetRemaining: Math.round(budgetRemaining * 100) / 100,
+          budgetPacingPercent: Math.round(budgetPacing * 10) / 10,
+          impressions,
+          reach,
+          clicks,
+          conversions,
+          revenue: Math.round(revenue * 100) / 100,
+          CTR: Math.round(ctr * 100) / 100,
+          CPC: Math.round(cpc * 100) / 100,
+          CPA: Math.round(cpa * 100) / 100,
+          conversionRate: Math.round(conversionRate * 100) / 100,
+          ROAS: Math.round(roas * 100) / 100,
+          ROI: Math.round(roi * 100) / 100,
+          timeline: {
+            totalDays,
+            daysElapsed,
+            daysRemaining,
+            targetDailySpend: Math.round(targetDailySpend * 100) / 100,
+            actualDailySpend: Math.round(actualDailySpend * 100) / 100,
+          },
+        },
+      },
     })
   } catch (err) {
     next(err)

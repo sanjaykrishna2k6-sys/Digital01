@@ -16,7 +16,7 @@ const getAppUrl = () => process.env.SHOPIFY_APP_URL || 'http://localhost:5000'
 export function buildOAuthUrl(shop, stateNonce) {
   const apiKey = getApiKey()
   const scopes = getScopes()
-  const redirectUri = `${getAppUrl()}/api/integrations/shopify/callback`
+  const redirectUri = `${getAppUrl()}/api/shopify/callback`
 
   const params = new URLSearchParams({
     client_id: apiKey,
@@ -114,9 +114,13 @@ export async function fetchShopDetails(shop, accessToken) {
       shop {
         id
         name
+        email
         myshopifyDomain
         currencyCode
         timezoneAbbreviation
+        billingAddress {
+          country
+        }
       }
     }
   `
@@ -148,10 +152,11 @@ export async function syncProducts(organizationId, shopifyStoreId, shop, accessT
             vendor
             productType
             totalInventory
-            variants(first: 1) {
+            variants(first: 5) {
               edges {
                 node {
                   price
+                  sku
                 }
               }
             }
@@ -171,17 +176,24 @@ export async function syncProducts(organizationId, shopifyStoreId, shop, accessT
     for (const edge of edges) {
       const node = edge.node
       const rawPrice = node.variants?.edges?.[0]?.node?.price || '0'
+      const sku = node.variants?.edges?.[0]?.node?.sku || ''
       const price = parseFloat(rawPrice) || 0
 
       await ShopifyProduct.findOneAndUpdate(
         {
+          $or: [
+            { organizationId, shopifyStore: shopifyStoreId, shopifyProductId: node.id },
+            { organization: organizationId, shopifyStore: shopifyStoreId, shopifyProductId: node.id },
+          ],
+        },
+        {
+          organizationId,
           organization: organizationId,
           shopifyStore: shopifyStoreId,
           shopifyProductId: node.id,
-        },
-        {
           title: node.title,
           handle: node.handle || '',
+          sku,
           status: node.status || 'ACTIVE',
           vendor: node.vendor || '',
           productType: node.productType || '',
@@ -245,6 +257,11 @@ export async function syncOrders(organizationId, shopifyStoreId, shop, accessTok
                 amount
               }
             }
+            customer {
+              firstName
+              lastName
+              email
+            }
             lineItems(first: 10) {
               edges {
                 node {
@@ -278,7 +295,12 @@ export async function syncOrders(organizationId, shopifyStoreId, shop, accessTok
       const subtotal = parseFloat(node.subtotalPriceSet?.shopMoney?.amount || '0') || 0
       const totalTax = parseFloat(node.totalTaxSet?.shopMoney?.amount || '0') || 0
       const discountTotal = parseFloat(node.totalDiscountsSet?.shopMoney?.amount || '0') || 0
-      const currency = node.totalPriceSet?.shopMoney?.currencyCode || 'INR'
+      const currency = node.totalPriceSet?.shopMoney?.currencyCode || 'USD'
+
+      const customerName = node.customer
+        ? `${node.customer.firstName || ''} ${node.customer.lastName || ''}`.trim()
+        : 'Guest Customer'
+      const customerEmail = node.customer?.email || ''
 
       const lineItems = (node.lineItems?.edges || []).map((le) => ({
         title: le.node.title,
@@ -288,12 +310,19 @@ export async function syncOrders(organizationId, shopifyStoreId, shop, accessTok
 
       await ShopifyOrder.findOneAndUpdate(
         {
+          $or: [
+            { organizationId, shopifyStore: shopifyStoreId, shopifyOrderId: node.id },
+            { organization: organizationId, shopifyStore: shopifyStoreId, shopifyOrderId: node.id },
+          ],
+        },
+        {
+          organizationId,
           organization: organizationId,
           shopifyStore: shopifyStoreId,
           shopifyOrderId: node.id,
-        },
-        {
           orderNumber: node.name || '',
+          customerName,
+          customerEmail,
           financialStatus: node.displayFinancialStatus || 'PAID',
           fulfillmentStatus: node.displayFulfillmentStatus || 'UNFULFILLED',
           currency,
@@ -362,15 +391,20 @@ export async function syncCustomers(organizationId, shopifyStoreId, shop, access
       const node = edge.node
       const ordersCount = parseInt(node.numberOfOrders || '0', 10) || 0
       const totalSpent = parseFloat(node.amountSpent?.amount || '0') || 0
-      const currency = node.amountSpent?.currencyCode || 'INR'
+      const currency = node.amountSpent?.currencyCode || 'USD'
 
       await ShopifyCustomer.findOneAndUpdate(
         {
+          $or: [
+            { organizationId, shopifyStore: shopifyStoreId, shopifyCustomerId: node.id },
+            { organization: organizationId, shopifyStore: shopifyStoreId, shopifyCustomerId: node.id },
+          ],
+        },
+        {
+          organizationId,
           organization: organizationId,
           shopifyStore: shopifyStoreId,
           shopifyCustomerId: node.id,
-        },
-        {
           firstName: node.firstName || '',
           lastName: node.lastName || '',
           email: node.email ? node.email.toLowerCase().trim() : '',
@@ -424,11 +458,260 @@ export async function performFullSync(organizationId, store) {
       productsCount,
       ordersCount,
       customersCount,
+      lastSyncedAt: store.lastSyncedAt,
     }
   } catch (err) {
     store.status = 'error'
+    store.syncStatus = store.syncStatus || {}
     store.syncStatus.lastError = err.message
     await store.save()
     throw err
   }
+}
+
+// =========================================================================
+// Encapsulated Service Functions specified in Section 5
+// =========================================================================
+
+/**
+ * Retrieve connected ShopifyStore record for the authenticated organization.
+ */
+export async function getShopifyStore(organizationId) {
+  return ShopifyStore.findOne({
+    $or: [{ organizationId }, { organization: organizationId }],
+  })
+}
+
+/**
+ * Retrieve live shop info from Shopify Admin API or cached store metadata.
+ */
+export async function getShopInfo(organizationId) {
+  const store = await ShopifyStore.findOne({
+    $or: [{ organizationId }, { organization: organizationId }],
+    status: { $in: ['connected', 'syncing'] },
+  }).select('+encryptedAccessToken')
+
+  if (!store || !store.encryptedAccessToken) {
+    return null
+  }
+
+  try {
+    const accessToken = decryptToken(store.encryptedAccessToken)
+    const remoteDetails = await fetchShopDetails(store.shopDomain, accessToken)
+    return {
+      ...remoteDetails,
+      shopDomain: store.shopDomain,
+      connectedAt: store.connectedAt,
+      lastSyncedAt: store.lastSyncedAt,
+      syncStatus: store.syncStatus,
+    }
+  } catch (err) {
+    // Return cached details on remote API error or offline dev
+    return {
+      name: store.shopName,
+      myshopifyDomain: store.shopDomain,
+      currencyCode: store.currency,
+      timezoneAbbreviation: store.timezone,
+      connectedAt: store.connectedAt,
+      lastSyncedAt: store.lastSyncedAt,
+      syncStatus: store.syncStatus,
+    }
+  }
+}
+
+/**
+ * Get paginated products for an organization.
+ */
+export async function getProducts(organizationId, { page = 1, limit = 20, search, status } = {}) {
+  const pageNum = Math.max(1, parseInt(page, 10) || 1)
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20))
+  const skip = (pageNum - 1) * limitNum
+
+  const filter = {
+    $or: [{ organizationId }, { organization: organizationId }],
+  }
+
+  if (status && status !== 'all') {
+    filter.status = status.toUpperCase()
+  }
+
+  if (search && search.trim()) {
+    const sanitized = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(sanitized, 'i')
+    filter.$and = filter.$and || []
+    filter.$and.push({
+      $or: [{ title: regex }, { handle: regex }, { vendor: regex }, { productType: regex }, { sku: regex }],
+    })
+  }
+
+  const [products, total] = await Promise.all([
+    ShopifyProduct.find(filter).sort({ createdAtShopify: -1, createdAt: -1 }).skip(skip).limit(limitNum),
+    ShopifyProduct.countDocuments(filter),
+  ])
+
+  return {
+    products,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    },
+  }
+}
+
+/**
+ * Get single product by ID for an organization.
+ */
+export async function getProduct(organizationId, id) {
+  const filter = {
+    $or: [{ organizationId }, { organization: organizationId }],
+  }
+
+  if (id.startsWith('gid://shopify/Product/')) {
+    filter.shopifyProductId = id
+  } else {
+    filter._id = id
+  }
+
+  return ShopifyProduct.findOne(filter)
+}
+
+/**
+ * Get paginated orders for an organization.
+ */
+export async function getOrders(
+  organizationId,
+  { page = 1, limit = 20, search, financialStatus, fulfillmentStatus } = {}
+) {
+  const pageNum = Math.max(1, parseInt(page, 10) || 1)
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20))
+  const skip = (pageNum - 1) * limitNum
+
+  const filter = {
+    $or: [{ organizationId }, { organization: organizationId }],
+  }
+
+  if (financialStatus && financialStatus !== 'all') {
+    filter.financialStatus = financialStatus.toUpperCase()
+  }
+
+  if (fulfillmentStatus && fulfillmentStatus !== 'all') {
+    filter.fulfillmentStatus = fulfillmentStatus.toUpperCase()
+  }
+
+  if (search && search.trim()) {
+    const sanitized = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(sanitized, 'i')
+    filter.$and = filter.$and || []
+    filter.$and.push({
+      $or: [{ orderNumber: regex }, { customerName: regex }, { customerEmail: regex }],
+    })
+  }
+
+  const [orders, total] = await Promise.all([
+    ShopifyOrder.find(filter).sort({ createdAtShopify: -1, createdAt: -1 }).skip(skip).limit(limitNum),
+    ShopifyOrder.countDocuments(filter),
+  ])
+
+  return {
+    orders,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    },
+  }
+}
+
+/**
+ * Get single order by ID for an organization.
+ */
+export async function getOrder(organizationId, id) {
+  const filter = {
+    $or: [{ organizationId }, { organization: organizationId }],
+  }
+
+  if (id.startsWith('gid://shopify/Order/')) {
+    filter.shopifyOrderId = id
+  } else {
+    filter._id = id
+  }
+
+  return ShopifyOrder.findOne(filter)
+}
+
+/**
+ * Get paginated customers for an organization.
+ */
+export async function getCustomers(organizationId, { page = 1, limit = 20, search } = {}) {
+  const pageNum = Math.max(1, parseInt(page, 10) || 1)
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20))
+  const skip = (pageNum - 1) * limitNum
+
+  const filter = {
+    $or: [{ organizationId }, { organization: organizationId }],
+  }
+
+  if (search && search.trim()) {
+    const sanitized = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(sanitized, 'i')
+    filter.$and = filter.$and || []
+    filter.$and.push({
+      $or: [{ firstName: regex }, { lastName: regex }, { email: regex }, { phone: regex }],
+    })
+  }
+
+  const [customers, total] = await Promise.all([
+    ShopifyCustomer.find(filter).sort({ createdAtShopify: -1, createdAt: -1 }).skip(skip).limit(limitNum),
+    ShopifyCustomer.countDocuments(filter),
+  ])
+
+  return {
+    customers,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    },
+  }
+}
+
+/**
+ * Get single customer by ID for an organization.
+ */
+export async function getCustomer(organizationId, id) {
+  const filter = {
+    $or: [{ organizationId }, { organization: organizationId }],
+  }
+
+  if (id.startsWith('gid://shopify/Customer/')) {
+    filter.shopifyCustomerId = id
+  } else {
+    filter._id = id
+  }
+
+  return ShopifyCustomer.findOne(filter)
+}
+
+/**
+ * Trigger full store sync by organization ID.
+ */
+export async function syncStore(organizationId) {
+  const store = await ShopifyStore.findOne({
+    $or: [{ organizationId }, { organization: organizationId }],
+    status: { $in: ['connected', 'error'] },
+  }).select('+encryptedAccessToken')
+
+  if (!store) {
+    throw new Error('No connected Shopify store found for this organization.')
+  }
+
+  if (!store.encryptedAccessToken) {
+    throw new Error('Shopify credentials missing. Please reconnect your store.')
+  }
+
+  return performFullSync(organizationId, store)
 }

@@ -29,3 +29,17 @@ export function formatNumber(n) {
   if (typeof n !== 'number') return n || ''
   return n.toLocaleString('en-IN')
 }
+
+/**
+ * Format date string into human-readable format (e.g. Oct 24, 2026)
+ */
+export function formatDate(dateString) {
+  if (!dateString) return '—'
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}

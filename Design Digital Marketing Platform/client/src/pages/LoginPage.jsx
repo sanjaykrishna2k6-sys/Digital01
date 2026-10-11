@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Zap, TrendingUp, Users, BarChart3, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Zap, TrendingUp, Users, BarChart3, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { useAuth } from '../context/AuthContext'
 
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, isAuthenticated } = useAuth()
+  const { login, loginAsDemo, user, isAuthenticated } = useAuth()
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const handleDemoLogin = (role = 'admin') => {
+    loginAsDemo(role)
+    navigate(role === 'client' ? '/portal' : '/dashboard', { replace: true })
+  }
+
+  const [email, setEmail] = useState('admin@krishpo.com')
+  const [password, setPassword] = useState('krishpo123')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(false)
   const [emailFocused, setEmailFocused] = useState(false)
@@ -22,9 +27,10 @@ export function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+      const target = user?.role === 'client' ? '/portal' : '/dashboard'
+      navigate(target, { replace: true })
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, user, navigate])
 
   // Check for error in query parameters (e.g. from OAuth redirect)
   useEffect(() => {
@@ -32,6 +38,7 @@ export function LoginPage() {
     const err = params.get('error')
     if (err) {
       const errorMap = {
+        google_oauth_not_configured: 'Google Sign-In is not configured yet. Please log in with your email and password, or configure Google OAuth credentials.',
         invalid_oauth_state: 'Google authentication session expired or was invalid. Please try again.',
         missing_auth_code: 'Google authentication failed to return an authorization code.',
         unverified_google_email: 'Your Google email address is unverified. Please verify your Google account first.',
@@ -61,8 +68,10 @@ export function LoginPage() {
 
     setFormState('loading')
     try {
-      await login(email, password)
-      const targetPath = location.state?.from?.pathname || '/dashboard'
+      const res = await login(email, password)
+      const loggedUser = res?.data?.user
+      const defaultTarget = loggedUser?.role === 'client' ? '/portal' : '/dashboard'
+      const targetPath = location.state?.from?.pathname || defaultTarget
       navigate(targetPath, { replace: true })
     } catch (err) {
       setAuthError(err.message || 'The email or password you entered is incorrect. Please try again.')
@@ -99,8 +108,8 @@ export function LoginPage() {
             <Zap size={18} color="#fff" fill="#fff" />
           </div>
           <div>
-            <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Scalevo</p>
-            <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Agency Management Suite</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Krishpo</p>
+            <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Digital Marketing Platform</p>
           </div>
         </div>
 
@@ -108,7 +117,7 @@ export function LoginPage() {
         <div style={{ margin: '48px 0' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1E293B', borderRadius: 6, padding: '6px 12px', marginBottom: 28 }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ADE80' }} />
-            <span style={{ fontSize: 12, fontWeight: 500, color: '#94A3B8' }}>Trusted by 50+ agencies across India</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: '#94A3B8' }}>Trusted by performance marketing agencies</span>
           </div>
 
           <h2 style={{ fontSize: 38, fontWeight: 800, color: '#fff', lineHeight: 1.2, margin: '0 0 20px', letterSpacing: '-0.02em' }}>
@@ -136,7 +145,7 @@ export function LoginPage() {
         {/* Testimonial */}
         <div style={{ background: '#1E293B', borderRadius: 12, padding: 24, border: '1px solid #334155' }}>
           <p style={{ fontSize: 14, color: '#CBD5E1', lineHeight: 1.6, margin: '0 0 16px', fontStyle: 'italic' }}>
-            "Scalevo transformed how we manage our 40+ client accounts. We saved 15 hours per week on reporting alone."
+            "Krishpo transformed how we manage our client accounts. We saved 15 hours per week on reporting alone."
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -144,7 +153,7 @@ export function LoginPage() {
             </div>
             <div>
               <p style={{ fontSize: 13, fontWeight: 600, color: '#fff', margin: 0 }}>Rohit Kapoor</p>
-              <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Founder, DigiEdge Media, Mumbai</p>
+              <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Founder, DigiEdge Media</p>
             </div>
           </div>
         </div>
@@ -291,6 +300,59 @@ export function LoginPage() {
             </button>
           </form>
 
+          {/* Quick Demo Preview for friends / reviewers */}
+          <div style={{ marginTop: 24, padding: '16px', background: '#F0FDF4', borderRadius: 12, border: '1.5px solid #BBF7D0', textAlign: 'center' }}>
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700, color: '#166534', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <span>⚡</span> Live Preview / Demo Mode
+            </p>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: '#15803D' }}>
+              Want to see the platform without logging in? Click below:
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => handleDemoLogin('admin')}
+                style={{
+                  flex: 1,
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  background: '#16A34A',
+                  color: '#fff',
+                  border: 'none',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  transition: 'background 0.15s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#15803D' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#16A34A' }}
+              >
+                🚀 Agency Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDemoLogin('client')}
+                style={{
+                  flex: 1,
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  background: '#fff',
+                  color: '#166534',
+                  border: '1.5px solid #86EFAC',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#F0FDF4' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+              >
+                👤 Client Portal
+              </button>
+            </div>
+          </div>
+
           <p style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', marginTop: 24, lineHeight: 1.6 }}>
             Don't have an account?{' '}
             <button
@@ -303,7 +365,7 @@ export function LoginPage() {
           </p>
 
           <p style={{ fontSize: 12, color: '#D1D5DB', textAlign: 'center', marginTop: 32 }}>
-            By signing in, you agree to our{' '}
+            By signing in, you agree to Krishpo's{' '}
             <a href="#terms" onClick={(e) => e.preventDefault()} style={{ color: '#9CA3AF', textDecoration: 'underline' }}>Terms of Service</a>{' '}
             and{' '}
             <a href="#privacy" onClick={(e) => e.preventDefault()} style={{ color: '#9CA3AF', textDecoration: 'underline' }}>Privacy Policy</a>

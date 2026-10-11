@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test'
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -8,6 +9,7 @@ import { connectDB } from '../config/db.js'
 import User from '../models/User.js'
 import Organization from '../models/Organization.js'
 import Campaign from '../models/Campaign.js'
+import Client from '../models/Client.js'
 import Customer from '../models/Customer.js'
 import Lead from '../models/Lead.js'
 import { generateToken } from '../utils/token.js'
@@ -107,8 +109,21 @@ async function runTests() {
       await userB.save()
     }
 
-    const tokenA = generateToken({ userId: userA._id })
-    const tokenB = generateToken({ userId: userB._id })
+    let clientA = await Client.findOne({ organizationId: orgA._id, email: 'integclient@orga.com' })
+    if (!clientA) {
+      clientA = await Client.create({
+        organizationId: orgA._id,
+        companyName: 'Integ Client Org A',
+        contactName: 'Integ Contact',
+        email: 'integclient@orga.com',
+        industry: 'E-commerce & Retail',
+        status: 'active',
+        createdBy: userA._id,
+      })
+    }
+
+    const tokenA = generateToken({ userId: userA._id, organizationId: orgA._id, role: userA.role })
+    const tokenB = generateToken({ userId: userB._id, organizationId: orgB._id, role: userB.role })
     const cookieA = `scalevo_token=${tokenA}`
     const cookieB = `scalevo_token=${tokenB}`
 
@@ -141,11 +156,14 @@ async function runTests() {
       },
       body: JSON.stringify({
         name: 'Q4 Omnichannel Blast',
+        clientId: clientA._id.toString(),
         channel: 'Meta Ads',
-        status: 'active',
+        campaignType: 'Meta Ads',
+        status: 'Active',
         budget: 50000,
         spent: 12000,
         startDate: new Date().toISOString(),
+        endDate: new Date(Date.now() + 864000000).toISOString(),
         metrics: {
           impressions: 45000,
           clicks: 2200,

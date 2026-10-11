@@ -333,11 +333,42 @@ export async function getMe(req, res) {
   })
 }
 
+function getClientUrl(req) {
+  if (process.env.CLIENT_URL && !process.env.CLIENT_URL.includes('localhost')) {
+    return process.env.CLIENT_URL.replace(/\/+$/, '')
+  }
+  const referer = req.headers.referer || req.headers.origin
+  if (referer) {
+    try {
+      const url = new URL(referer)
+      return url.origin
+    } catch (e) {
+      // fallback
+    }
+  }
+  const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5173'
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http'
+  if (host.includes(':5000')) {
+    return `${protocol}://${host.replace(':5000', ':5173')}`
+  }
+  return `${protocol}://${host}`
+}
+
 /**
  * Initiate Google OAuth 2.0 flow
  * GET /api/auth/google
  */
 export async function initiateGoogleAuth(req, res) {
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  const clientUrl = getClientUrl(req)
+
+  // If Google OAuth credentials are not set or left as placeholders, redirect back with a friendly message
+  if (!clientId || clientId === 'google_client_id_placeholder' || clientId.includes('placeholder')) {
+    const referer = req.headers.referer || ''
+    const redirectTarget = referer.includes('/signup') ? `${clientUrl}/signup` : `${clientUrl}/login`
+    return res.redirect(`${redirectTarget}?error=google_oauth_not_configured`)
+  }
+
   const state = generateOAuthState()
   const isProduction = process.env.NODE_ENV === 'production'
 
@@ -360,7 +391,7 @@ export async function initiateGoogleAuth(req, res) {
  */
 export async function handleGoogleCallback(req, res, next) {
   const isProduction = process.env.NODE_ENV === 'production'
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173'
+  const clientUrl = getClientUrl(req)
 
   try {
     const { code, state, error } = req.query
@@ -511,7 +542,7 @@ export async function handleGoogleCallback(req, res, next) {
     if (req.headers.accept?.includes('application/json')) {
       return res.status(500).json({ status: 'error', message: err.message || 'Internal OAuth error' })
     }
-    return res.redirect(`${clientUrl}/login?error=auth_internal_error`)
+    return res.redirect(`${clientUrl}/login?error=${encodeURIComponent(err.message || 'auth_internal_error')}`)
   }
 }
 
@@ -564,7 +595,7 @@ export async function forgotPassword(req, res, next) {
     user.passwordResetExpiresAt = new Date(Date.now() + 30 * 60 * 1000) // 30 minutes validity
     await user.save({ validateBeforeSave: false })
 
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173'
+    const clientUrl = getClientUrl(req)
     const resetUrl = `${clientUrl}/reset-password/${resetToken}`
 
     await sendPasswordResetEmail({

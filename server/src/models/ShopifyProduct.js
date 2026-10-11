@@ -2,10 +2,14 @@ import mongoose from 'mongoose'
 
 const shopifyProductSchema = new mongoose.Schema(
   {
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      index: true,
+    },
     organization: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
-      required: [true, 'Organization reference is required'],
       index: true,
     },
     shopifyStore: {
@@ -25,6 +29,11 @@ const shopifyProductSchema = new mongoose.Schema(
       trim: true,
     },
     handle: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    sku: {
       type: String,
       trim: true,
       default: '',
@@ -53,7 +62,7 @@ const shopifyProductSchema = new mongoose.Schema(
     },
     currency: {
       type: String,
-      default: 'INR',
+      default: 'USD',
     },
     createdAtShopify: {
       type: Date,
@@ -79,10 +88,27 @@ const shopifyProductSchema = new mongoose.Schema(
   }
 )
 
+// Pre-validate hook to sync organization and organizationId bidirectionally
+shopifyProductSchema.pre('validate', function (next) {
+  if (this.organization && !this.organizationId) {
+    this.organizationId = this.organization
+  } else if (this.organizationId && !this.organization) {
+    this.organization = this.organizationId
+  }
+
+  if (!this.organization && !this.organizationId) {
+    return next(new Error('Organization reference is required'))
+  }
+  next()
+})
+
 // Idempotent upsert index
 shopifyProductSchema.index(
   { organization: 1, shopifyStore: 1, shopifyProductId: 1 },
   { unique: true }
+)
+shopifyProductSchema.index(
+  { organizationId: 1, shopifyStore: 1, shopifyProductId: 1 }
 )
 
 const ShopifyProduct = mongoose.model('ShopifyProduct', shopifyProductSchema)

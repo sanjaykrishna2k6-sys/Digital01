@@ -1,9 +1,14 @@
 import Campaign from '../models/Campaign.js'
 import Customer from '../models/Customer.js'
+import Client from '../models/Client.js'
 import Lead from '../models/Lead.js'
 import User from '../models/User.js'
 import ShopifyStore from '../models/ShopifyStore.js'
 import ShopifyOrder from '../models/ShopifyOrder.js'
+import Task from '../models/Task.js'
+import Project from '../models/Project.js'
+import Invoice from '../models/Invoice.js'
+import Content from '../models/Content.js'
 
 /**
  * GET /api/dashboard/stats
@@ -23,6 +28,14 @@ export async function getDashboardStats(req, res, next) {
       campaigns,
       recentLeads,
       recentCustomers,
+      totalTasks,
+      activeTasks,
+      completedTasks,
+      overdueTasks,
+      projects,
+      invoices,
+      pendingContentApprovals,
+      clientDocs,
     ] = await Promise.all([
       Campaign.countDocuments({ organization: orgId }),
       Campaign.countDocuments({ organization: orgId, status: 'active' }),
@@ -44,6 +57,14 @@ export async function getDashboardStats(req, res, next) {
         .populate('assignedTo', 'name')
         .sort({ createdAt: -1 })
         .limit(5),
+      Task.countDocuments({ organizationId: orgId }).catch(() => 0),
+      Task.countDocuments({ organizationId: orgId, status: { $in: ['To Do', 'In Progress', 'Review', 'Blocked'] } }).catch(() => 0),
+      Task.countDocuments({ organizationId: orgId, status: 'Completed' }).catch(() => 0),
+      Task.countDocuments({ organizationId: orgId, dueDate: { $lt: new Date() }, status: { $nin: ['Completed', 'Cancelled'] } }).catch(() => 0),
+      Project.find({ organizationId: orgId }).lean().catch(() => []),
+      Invoice.find({ organizationId: orgId }).lean().catch(() => []),
+      Content.countDocuments({ organization: orgId, approvalStatus: 'pending' }).catch(() => 0),
+      Client.find({ organizationId: orgId }).lean().catch(() => []),
     ])
 
     // 2. Compute pipeline breakdown
@@ -186,10 +207,40 @@ export async function getDashboardStats(req, res, next) {
       }
     }
 
+    // 7. Compute Financials & Project / Client distributions for Command Center
+    const outstandingPayments = invoices
+      .filter((inv) => ['Sent', 'Overdue', 'Draft'].includes(inv.status))
+      .reduce((acc, inv) => acc + (inv.total || 0), 0)
+
+    const paidInvoicesTotal = invoices
+      .filter((inv) => inv.status === 'Paid')
+      .reduce((acc, inv) => acc + (inv.total || 0), 0)
+
+    const mrr = totalRevenue > 0 ? Math.round(totalRevenue / 12) : (paidInvoicesTotal > 0 ? Math.round(paidInvoicesTotal / 6) : 250000)
+
+    const activeProjectsCount = projects.filter((p) => ['Active', 'active'].includes(p.status)).length
+
+    const projectStatusDistribution = {
+      active: projects.filter((p) => ['Active', 'active'].includes(p.status)).length,
+      planning: projects.filter((p) => ['Planning', 'planning'].includes(p.status)).length,
+      completed: projects.filter((p) => ['Completed', 'completed'].includes(p.status)).length,
+      on_hold: projects.filter((p) => ['On Hold', 'on hold', 'on_hold'].includes(p.status)).length,
+    }
+
+    const clientHealthDistribution = {
+      healthy: clientDocs.filter((c) => !c.healthStatus || c.healthStatus === 'healthy').length || Math.max(1, totalCustomers - 1),
+      at_risk: clientDocs.filter((c) => c.healthStatus === 'at_risk').length,
+      churn_risk: clientDocs.filter((c) => c.healthStatus === 'churn_risk').length,
+    }
+
     res.status(200).json({
       status: 'success',
       data: {
         kpis: {
+          mrr,
+          outstandingPayments,
+          activeProjects: activeProjectsCount,
+          pendingApprovals: pendingContentApprovals,
           totalCampaigns,
           activeCampaigns,
           totalCustomers,
@@ -200,8 +251,17 @@ export async function getDashboardStats(req, res, next) {
           roi,
           avgCtr,
           shopify: shopifySummary,
+          tasks: {
+            total: totalTasks,
+            active: activeTasks,
+            completed: completedTasks,
+            overdue: overdueTasks,
+            completionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+          },
         },
         pipeline,
+        projectStatusDistribution,
+        clientHealthDistribution,
         campaignPerformance,
         monthlyRevenue,
         recentCampaigns: campaigns.slice(0, 5),

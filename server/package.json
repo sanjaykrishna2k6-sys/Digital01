@@ -7,9 +7,19 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node src/tests/user-management.test.js && node src/tests/auth-system.test.js",
+    "test": "node src/tests/run-all-tests.js",
     "test:users": "node src/tests/user-management.test.js",
-    "test:auth": "node src/tests/auth-system.test.js"
+    "test:auth": "node src/tests/auth-system.test.js",
+    "test:clients": "node src/tests/client-management.test.js",
+    "test:shopify": "node src/tests/shopify-integration.test.js",
+    "test:campaigns": "node src/tests/campaign-management.test.js",
+    "test:projects": "node src/tests/project-management.test.js",
+    "test:tasks": "node src/tests/task-management.test.js",
+    "test:services": "node src/tests/service-management.test.js",
+    "test:content": "node src/tests/content-approval.test.js",
+    "test:billing": "node src/tests/billing-invoicing.test.js",
+    "test:notifications": "node src/tests/notification-system.test.js",
+    "test:audit": "node src/tests/audit-logging.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -21,9 +31,11 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.6.0",
-    "mongoose": "^8.9.5"
+    "mongoose": "^8.9.5",
+    "pdfkit": "^0.20.2"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^11.3.0",
     "nodemon": "^3.1.9"
   }
 }

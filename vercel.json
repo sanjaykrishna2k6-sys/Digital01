@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "buildCommand": "cd \"Design Digital Marketing Platform/client\" && npm install && npm run build",
+  "outputDirectory": "Design Digital Marketing Platform/client/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
