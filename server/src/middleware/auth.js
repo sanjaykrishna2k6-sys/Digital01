@@ -69,6 +69,41 @@ export async function requireAuth(req, res, next) {
 }
 
 /**
+ * Middleware: Optional Authentication.
+ * If valid credentials exist, attaches req.user and req.organizationId.
+ * If not authenticated, proceeds without blocking (useful for demo/assistant queries).
+ */
+export async function optionalAuth(req, res, next) {
+  try {
+    const cookieName = getCookieName()
+    let token = req.cookies?.[cookieName]
+
+    if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+      token = req.headers.authorization.split(' ')[1]
+    }
+
+    if (token) {
+      try {
+        const decoded = verifyToken(token)
+        if (decoded?.userId) {
+          const user = await User.findById(decoded.userId).populate('organization')
+          if (user && user.status === 'active' && user.organization?.status === 'active') {
+            req.user = user
+            req.organizationId = user.organization._id
+            req.organization = user.organization
+          }
+        }
+      } catch (tokenErr) {
+        // Silently ignore expired/invalid token in optional auth
+      }
+    }
+    next()
+  } catch (err) {
+    next()
+  }
+}
+
+/**
  * Middleware: Role-Based Access Control (RBAC).
  * Allows specified roles. Super admin always has universal access.
  */

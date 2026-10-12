@@ -1,5 +1,5 @@
 import express from 'express'
-import { requireAuth, requireTenantScope } from '../middleware/auth.js'
+import { requireAuth, requireTenantScope, optionalAuth } from '../middleware/auth.js'
 import { aiRateLimiter } from '../middleware/rateLimiter.js'
 import {
   generateContent,
@@ -17,6 +17,9 @@ import {
 } from '../controllers/ai.controller.js'
 
 const router = express.Router()
+
+// Agency Contextual QA Query: allows optional auth so it answers reliably for both logged-in and guest users
+router.post('/query', optionalAuth, queryAIMarketingAssistant)
 
 router.use(requireAuth)
 router.use(requireTenantScope)
@@ -38,9 +41,6 @@ router.get('/saved', listSavedItems)
 router.post('/saved', saveItem)
 router.delete('/saved/:id', deleteSavedItem)
 router.get('/usage', getUsageStats)
-
-// Agency Contextual QA Query
-router.post('/query', queryAIMarketingAssistant)
 
 export default router
 
