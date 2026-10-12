@@ -6,7 +6,7 @@ import {
   Search,
   Filter,
   Calendar,
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   Clock,
   Edit2,
@@ -146,7 +146,7 @@ export function ProjectsPage() {
     startDate: '',
     endDate: '',
     budget: '',
-    currency: 'USD',
+    currency: 'INR',
     progress: 0,
     goals: '',
     deliverables: '',
@@ -603,8 +603,8 @@ export function ProjectsPage() {
         />
         <KpiCard
           label="Total Budget"
-          value={`$${Number(metrics.totalBudget || 0).toLocaleString()}`}
-          icon={DollarSign}
+          value={`₹${Number(metrics.totalBudget || 0).toLocaleString('en-IN')}`}
+          icon={IndianRupee}
           iconBg="#EFF6FF"
           iconColor="#2563EB"
           change="Contracted"
@@ -889,9 +889,9 @@ export function ProjectsPage() {
                       {/* Budget */}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="font-semibold text-[#111827]">
-                          ${Number(proj.budget || 0).toLocaleString()}
+                          ₹{Number(proj.budget || 0).toLocaleString('en-IN')}
                         </span>
-                        <span className="text-[11px] text-[#6B7280] ml-1">{proj.currency || 'USD'}</span>
+                        <span className="text-[11px] text-[#6B7280] ml-1">{proj.currency || 'INR'}</span>
                       </td>
 
                       {/* Status */}

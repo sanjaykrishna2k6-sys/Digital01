@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Calendar,
   DollarSign,
+  IndianRupee,
   TrendingUp,
   Users,
   Target,
@@ -31,7 +32,7 @@ import { Button } from '../components/ui/Button'
 import { Loading } from '../components/ui/Loading'
 import { ErrorState } from '../components/ui/ErrorState'
 import { Modal } from '../components/ui/Modal'
-import { formatDate } from '../utils/formatters'
+import { formatDate, formatINR } from '../utils/formatters'
 import { useAuth } from '../context/AuthContext'
 import * as projectService from '../services/projectService'
 import * as taskService from '../services/taskService'
@@ -506,16 +507,16 @@ export function ProjectDetailsPage() {
         <Card className="p-4 space-y-2">
           <div className="flex items-center justify-between text-xs text-[#6B7280]">
             <span className="font-medium">Total Budget</span>
-            <DollarSign className="w-4 h-4 text-[#4F46E5]" />
+            <IndianRupee className="w-4 h-4 text-[#4F46E5]" />
           </div>
           <div className="text-xl font-bold text-[#111827]">
-            ${Number(project.budget || 0).toLocaleString()}
+            {formatINR(Number(project.budget || 0))}
           </div>
           <p className="text-xs text-[#6B7280]">
-            Spent: <span className="font-semibold text-[#111827]">${Number(stats.spent || 0).toLocaleString()}</span>
+            Spent: <span className="font-semibold text-[#111827]">{formatINR(Number(stats.spent || 0))}</span>
           </p>
           <p className="text-[11px] text-[#16A34A] font-medium">
-            Remaining: ${Number(stats.remaining !== undefined ? stats.remaining : project.budget || 0).toLocaleString()}
+            Remaining: {formatINR(Number(stats.remaining !== undefined ? stats.remaining : project.budget || 0))}
           </p>
         </Card>
 
@@ -604,7 +605,7 @@ export function ProjectDetailsPage() {
               </div>
               <div>
                 <span className="text-[#6B7280] block">Currency</span>
-                <span className="font-semibold text-[#111827] mt-0.5 block">{project.currency || 'USD'}</span>
+                <span className="font-semibold text-[#111827] mt-0.5 block">{project.currency === 'USD' ? 'INR' : (project.currency || 'INR')}</span>
               </div>
               <div>
                 <span className="text-[#6B7280] block">Start Date</span>
@@ -1005,7 +1006,7 @@ export function ProjectDetailsPage() {
             </div>
             <div className="flex justify-between py-1 border-b border-[#F3F4F6]">
               <span>Created By</span>
-              <span className="text-[#111827]">{project.createdBy?.name || 'Scalevo System'}</span>
+              <span className="text-[#111827]">{project.createdBy?.name || 'Krishpo System'}</span>
             </div>
             <div className="flex justify-between py-1">
               <span>Last Modified</span>

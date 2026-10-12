@@ -332,7 +332,7 @@ export function TaskDetailsPage() {
   const clientName = task.clientId?.companyName || '—'
   const campaignName = task.campaignId?.name || null
   const assigneeName = task.assignedTo?.name || 'Unassigned'
-  const creatorName = task.createdBy?.name || 'Scalevo System'
+  const creatorName = task.createdBy?.name || 'Krishpo System'
   const stats = statistics || {}
 
   const now = new Date()

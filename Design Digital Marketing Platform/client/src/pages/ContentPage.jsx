@@ -52,7 +52,7 @@ const CONTENT_ITEMS = [
   {
     id: 4,
     title: 'LinkedIn Thought Leadership — B2B SaaS Case Study',
-    client: 'Scalevo Corp',
+    client: 'Krishpo Media',
     platform: 'LinkedIn',
     type: 'Document Post',
     scheduledDate: '25 Oct 2024',

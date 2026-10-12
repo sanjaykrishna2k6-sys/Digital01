@@ -66,7 +66,7 @@ export function ForgotPasswordPage() {
             <Zap size={18} color="#fff" fill="#fff" />
           </div>
           <div>
-            <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Scalevo</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Krishpo</p>
             <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Agency Management Suite</p>
           </div>
         </div>
@@ -98,7 +98,7 @@ export function ForgotPasswordPage() {
         {/* Footer info */}
         <div style={{ background: '#1E293B', borderRadius: 12, padding: 20, border: '1px solid #334155' }}>
           <p style={{ fontSize: 13, color: '#94A3B8', lineHeight: 1.5, margin: 0 }}>
-            Need enterprise assistance? Contact your organization administrator or reach support at <span style={{ color: '#818CF8' }}>support@scalevo.com</span>
+            Need enterprise assistance? Contact your organization administrator or reach support at <span style={{ color: '#818CF8' }}>support@krishpo.com</span>
           </p>
         </div>
       </div>

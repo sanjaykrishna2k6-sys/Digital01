@@ -267,6 +267,7 @@ const FALLBACK_REPORTS = [
 
 // Mutable caches for interactive demo sessions
 let localProjects = [...FALLBACK_PROJECTS]
+let localIssues = [...FALLBACK_ISSUES]
 let localKeywords = [...FALLBACK_KEYWORDS]
 let localBacklinks = [...FALLBACK_BACKLINKS]
 let localCompetitors = [...FALLBACK_COMPETITORS]
@@ -391,7 +392,7 @@ export async function fetchSEOIssues(params = {}) {
     const res = await request(url)
     return res.issues || res || []
   } catch (err) {
-    let result = [...FALLBACK_ISSUES]
+    let result = [...localIssues]
     if (params.severity && params.severity !== 'all') {
       result = result.filter(i => i.severity === params.severity)
     }
@@ -409,7 +410,9 @@ export async function createSEOIssue(data) {
       body: JSON.stringify(data),
     })
   } catch (err) {
-    return { _id: 'issue-' + Date.now(), ...data }
+    const newIssue = { _id: 'issue-' + Date.now(), ...data }
+    localIssues = [newIssue, ...localIssues]
+    return newIssue
   }
 }
 
@@ -420,7 +423,34 @@ export async function updateSEOIssue(id, data) {
       body: JSON.stringify(data),
     })
   } catch (err) {
+    localIssues = localIssues.map(i => i._id === id ? { ...i, ...data } : i)
     return { success: true }
+  }
+}
+
+export async function convertSEOIssueToTask(id) {
+  try {
+    return await request(`${API_BASE}/issues/${id}/convert-task`, {
+      method: 'POST',
+    })
+  } catch (err) {
+    localIssues = localIssues.map(i =>
+      i._id === id ? { ...i, taskId: 'task-' + Date.now(), status: 'In Progress' } : i
+    )
+    return { success: true, message: 'Issue converted to Krishpo task!' }
+  }
+}
+
+export async function verifySEOIssueFix(id) {
+  try {
+    return await request(`${API_BASE}/issues/${id}/verify`, {
+      method: 'POST',
+    })
+  } catch (err) {
+    localIssues = localIssues.map(i =>
+      i._id === id ? { ...i, status: 'Resolved' } : i
+    )
+    return { success: true, message: 'Issue fix verified and marked as Resolved!' }
   }
 }
 

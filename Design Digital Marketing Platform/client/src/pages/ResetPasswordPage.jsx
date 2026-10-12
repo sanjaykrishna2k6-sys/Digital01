@@ -102,7 +102,7 @@ export function ResetPasswordPage() {
             <Zap size={18} color="#fff" fill="#fff" />
           </div>
           <div>
-            <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Scalevo</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Krishpo</p>
             <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Agency Management Suite</p>
           </div>
         </div>
@@ -134,7 +134,7 @@ export function ResetPasswordPage() {
         {/* Footer info */}
         <div style={{ background: '#1E293B', borderRadius: 12, padding: 20, border: '1px solid #334155' }}>
           <p style={{ fontSize: 13, color: '#94A3B8', lineHeight: 1.5, margin: 0 }}>
-            Need assistance? Reach our 24/7 security desk at <span style={{ color: '#818CF8' }}>security@scalevo.com</span>
+            Need assistance? Reach our 24/7 security desk at <span style={{ color: '#818CF8' }}>security@krishpo.com</span>
           </p>
         </div>
       </div>

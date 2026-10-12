@@ -125,7 +125,7 @@ async function safeFetchHtml(targetUrl, timeoutMs = 5000, maxRedirects = 3) {
         reqUrl.href,
         {
           headers: {
-            'User-Agent': 'Scalevo-SEOCrawler/1.0 (+https://scalevo.io/bot)',
+            'User-Agent': 'Krishpo-SEOCrawler/1.0 (+https://krishpo.com/bot)',
             Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
           },

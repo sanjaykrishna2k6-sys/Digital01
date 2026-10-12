@@ -56,7 +56,7 @@ function RootRedirect() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <Loading size="lg" title="Verifying Scalevo session..." />
+        <Loading size="lg" title="Verifying Krishpo session..." />
       </div>
     )
   }

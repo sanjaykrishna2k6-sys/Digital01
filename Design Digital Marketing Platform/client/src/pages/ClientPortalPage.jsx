@@ -105,7 +105,7 @@ export function ClientPortalPage() {
             <Zap size={16} color="#fff" fill="#fff" />
           </div>
           <div>
-            <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0 }}>Scalevo</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0 }}>Krishpo</p>
             <p style={{ fontSize: 11, color: '#9CA3AF', margin: 0 }}>Client Portal</p>
           </div>
         </div>

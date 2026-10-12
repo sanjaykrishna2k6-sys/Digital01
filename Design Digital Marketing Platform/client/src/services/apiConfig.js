@@ -1,5 +1,5 @@
 /**
- * Scalevo API Configuration & Base URL Resolution
+ * Krishpo API Configuration & Base URL Resolution
  * 
  * Supports production multi-origin deployments via VITE_API_URL environment variable.
  * Fallbacks to relative paths for local development proxy (/api).

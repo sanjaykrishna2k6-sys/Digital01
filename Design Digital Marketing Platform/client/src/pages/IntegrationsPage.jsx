@@ -409,7 +409,7 @@ export function IntegrationsPage() {
       <Modal isOpen={isConnectModalOpen} onClose={() => setIsConnectModalOpen(false)} title="Connect Shopify Store">
         <form onSubmit={handleConnectSubmit} className="space-y-4">
           <p className="text-xs text-slate-600 leading-relaxed">
-            Enter your Shopify store domain to authorize the Scalevo Digital Marketing Platform. You will be redirected
+            Enter your Shopify store domain to authorize the Krishpo Digital Marketing Platform. You will be redirected
             to your Shopify Admin to approve read access for catalog, orders, and sales data.
           </p>
 

@@ -14,6 +14,7 @@ const FALLBACK_PROJECTS = [
     priority: 'high',
     progress: 72,
     budget: 250000,
+    currency: 'INR',
     startDate: '2024-09-01T00:00:00.000Z',
     endDate: '2024-11-30T00:00:00.000Z',
     clientId: { _id: 'client-1', companyName: 'Zenith Media Tech' },
@@ -28,6 +29,7 @@ const FALLBACK_PROJECTS = [
     priority: 'urgent',
     progress: 35,
     budget: 450000,
+    currency: 'INR',
     startDate: '2024-10-10T00:00:00.000Z',
     endDate: '2024-11-20T00:00:00.000Z',
     clientId: { _id: 'client-2', companyName: 'FreshMart Supermarkets' },
@@ -42,6 +44,7 @@ const FALLBACK_PROJECTS = [
     priority: 'high',
     progress: 88,
     budget: 320000,
+    currency: 'INR',
     startDate: '2024-08-15T00:00:00.000Z',
     endDate: '2024-12-15T00:00:00.000Z',
     clientId: { _id: 'client-3', companyName: 'Urban Homes Realty' },
@@ -56,6 +59,7 @@ const FALLBACK_PROJECTS = [
     priority: 'medium',
     progress: 100,
     budget: 180000,
+    currency: 'INR',
     startDate: '2024-07-01T00:00:00.000Z',
     endDate: '2024-09-30T00:00:00.000Z',
     clientId: { _id: 'client-4', companyName: 'Pulse Fitness India' },
@@ -117,13 +121,27 @@ function getFallbackProjectsResponse(params = {}) {
     const q = params.search.toLowerCase()
     list = list.filter(p => p.name.toLowerCase().includes(q))
   }
+  const activeCount = list.filter(p => p.status === 'in_progress' || p.status === 'active' || p.status === 'In Progress').length
+  const completedCount = list.filter(p => p.status === 'completed' || p.status === 'Completed').length
+  const planningCount = list.filter(p => p.status === 'planning' || p.status === 'Planning').length
+  const onHoldCount = list.filter(p => p.status === 'on_hold' || p.status === 'onHold' || p.status === 'On Hold').length
+  const totalBudget = list.reduce((sum, p) => sum + (Number(p.budget) || 0), 0)
+  const averageProgress = list.length > 0 ? Math.round(list.reduce((sum, p) => sum + (Number(p.progress) || 0), 0) / list.length) : 0
+
   return {
     data: {
       projects: list,
       metrics: {
         total: list.length,
-        in_progress: list.filter(p => p.status === 'in_progress').length,
-        completed: list.filter(p => p.status === 'completed').length,
+        active: activeCount,
+        in_progress: activeCount,
+        planning: planningCount,
+        onHold: onHoldCount,
+        on_hold: onHoldCount,
+        completed: completedCount,
+        cancelled: 0,
+        totalBudget,
+        averageProgress,
       },
     },
     pagination: { page: 1, limit: 15, total: list.length, totalPages: 1 },

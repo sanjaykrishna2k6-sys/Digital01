@@ -13,6 +13,7 @@ const FALLBACK_CAMPAIGNS = [
     channel: 'Meta Ads',
     status: 'active',
     budget: 500000,
+    currency: 'INR',
     spent: 340000,
     revenue: 1120000,
     conversions: 1280,
@@ -33,6 +34,7 @@ const FALLBACK_CAMPAIGNS = [
     channel: 'Google Ads',
     status: 'active',
     budget: 350000,
+    currency: 'INR',
     spent: 280000,
     revenue: 940000,
     conversions: 890,
@@ -51,16 +53,17 @@ const FALLBACK_CAMPAIGNS = [
     name: 'Festive Retargeting Email Sequence',
     campaignType: 'Retention',
     channel: 'Email',
-    status: 'active',
+    status: 'planned',
     budget: 80000,
-    spent: 65000,
-    revenue: 310000,
-    conversions: 420,
-    clicks: 14500,
-    impressions: 480000,
-    ctr: 3.02,
-    cpc: 4.48,
-    roas: 4.76,
+    currency: 'INR',
+    spent: 0,
+    revenue: 0,
+    conversions: 0,
+    clicks: 0,
+    impressions: 0,
+    ctr: 0,
+    cpc: 0,
+    roas: 0,
     startDate: '2024-10-05T00:00:00.000Z',
     endDate: '2024-11-20T00:00:00.000Z',
     clientId: { _id: 'client-3', companyName: 'Urban Homes Realty' },
@@ -71,8 +74,9 @@ const FALLBACK_CAMPAIGNS = [
     name: 'Q4 Enterprise Lead Acceleration',
     campaignType: 'Lead Generation',
     channel: 'LinkedIn',
-    status: 'paused',
+    status: 'completed',
     budget: 200000,
+    currency: 'INR',
     spent: 120000,
     revenue: 290000,
     conversions: 165,
@@ -140,12 +144,24 @@ function getFallbackCampaignsResponse(params = {}) {
     const q = params.search.toLowerCase()
     list = list.filter(c => c.name.toLowerCase().includes(q))
   }
+  const totalBudget = list.reduce((acc, c) => acc + (Number(c.budget) || 0), 0)
+  const activeCount = list.filter(c => c.status === 'active' || c.status === 'Active').length
+  const plannedCount = list.filter(c => c.status === 'planned' || c.status === 'Planned').length
+  const completedCount = list.filter(c => c.status === 'completed' || c.status === 'Completed').length
+  const pausedCount = list.filter(c => c.status === 'paused' || c.status === 'Paused').length
+
   return {
     data: {
       campaigns: list,
       metrics: {
         total: list.length,
-        active: list.filter(c => c.status === 'active').length,
+        active: activeCount,
+        planned: plannedCount,
+        completed: completedCount,
+        paused: pausedCount,
+        draft: 0,
+        cancelled: 0,
+        totalBudget,
         totalSpend: list.reduce((acc, c) => acc + (c.spent || 0), 0),
         totalRevenue: list.reduce((acc, c) => acc + (c.revenue || 0), 0),
       },

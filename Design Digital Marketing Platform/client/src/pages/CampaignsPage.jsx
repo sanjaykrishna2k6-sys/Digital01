@@ -6,7 +6,7 @@ import {
   Search,
   Filter,
   Calendar,
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   Clock,
   Edit2,
@@ -136,7 +136,7 @@ export function CampaignsPage() {
     startDate: '',
     endDate: '',
     budget: '',
-    currency: 'USD',
+    currency: 'INR',
     targetAudience: '',
     channels: ['SEO'],
     goals: '',
@@ -544,8 +544,8 @@ export function CampaignsPage() {
         />
         <KpiCard
           label="Total Budget"
-          value={`$${Number(metrics.totalBudget || 0).toLocaleString()}`}
-          icon={DollarSign}
+          value={`₹${Number(metrics.totalBudget || 0).toLocaleString('en-IN')}`}
+          icon={IndianRupee}
           iconBg="#FFFBEB"
           iconColor="#D97706"
           change="Allocated"
@@ -776,9 +776,9 @@ export function CampaignsPage() {
                       {/* Budget Column */}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="font-semibold text-[#111827]">
-                          ${Number(camp.budget || 0).toLocaleString()}
+                          ₹{Number(camp.budget || 0).toLocaleString('en-IN')}
                         </span>
-                        <span className="text-[11px] text-[#6B7280] ml-1">{camp.currency || 'USD'}</span>
+                        <span className="text-[11px] text-[#6B7280] ml-1">{camp.currency || 'INR'}</span>
                       </td>
 
                       {/* Status Column */}

@@ -26,8 +26,9 @@ import { useAuth } from '../../context/AuthContext'
 
 const NAV_GROUPS = [
   {
-    title: 'Overview',
+    title: 'Core Platform',
     items: [
+      { icon: Search, label: 'SEO Intelligence', path: '/seo', badge: 'Core' },
       { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     ],
   },
@@ -52,8 +53,7 @@ const NAV_GROUPS = [
   {
     title: 'Marketing Intelligence',
     items: [
-      { icon: Search, label: 'SEO', path: '/seo' },
-      { icon: ShoppingBag, label: 'Shopify', path: '/shopify', roleRestricted: true },
+      { icon: ShoppingBag, label: 'Shopify Store', path: '/shopify', roleRestricted: true },
       { icon: BarChart3, label: 'Analytics', path: '/analytics' },
       { icon: PieChart, label: 'Reports', path: '/reports' },
     ],
@@ -127,12 +127,19 @@ export function Sidebar({ className }) {
                     key={item.label}
                     to={item.path}
                     className={cn(
-                      'sidebar-nav-item',
+                      'sidebar-nav-item flex items-center justify-between',
                       isActive && 'active'
                     )}
                   >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span>{item.label}</span>
+                    <div className="flex items-center gap-2.5">
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span className="text-[9px] font-bold uppercase tracking-wider bg-indigo-100 text-[#4F46E5] px-1.5 py-0.5 rounded-full">
+                        {item.badge}
+                      </span>
+                    )}
                   </Link>
                 )
               })}

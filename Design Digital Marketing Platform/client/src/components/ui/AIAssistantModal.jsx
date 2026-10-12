@@ -55,7 +55,7 @@ export function AIAssistantModal({ isOpen, onClose, clientId = null }) {
               <Sparkles size={20} color="#fff" />
             </div>
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Scalevo AI Marketing Assistant</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Krishpo AI Marketing Assistant</h2>
               <p style={{ fontSize: 12, opacity: 0.85, margin: 0 }}>Grounded strictly in connected SEO & Shopify metrics</p>
             </div>
           </div>

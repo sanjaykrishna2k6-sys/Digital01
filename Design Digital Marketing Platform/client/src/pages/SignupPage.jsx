@@ -152,7 +152,7 @@ export function SignupPage() {
             <Zap size={18} color="#fff" fill="#fff" />
           </div>
           <div>
-            <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Scalevo</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0 }}>Krishpo</p>
             <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>Digital Marketing Platform</p>
           </div>
         </div>
@@ -450,7 +450,7 @@ export function SignupPage() {
           </p>
 
           <p style={{ fontSize: 12, color: '#D1D5DB', textAlign: 'center', marginTop: 28 }}>
-            By registering, you agree to Scalevo's{' '}
+            By registering, you agree to Krishpo's{' '}
             <a href="#terms" onClick={(e) => e.preventDefault()} style={{ color: '#9CA3AF', textDecoration: 'underline' }}>Terms of Service</a>{' '}
             and{' '}
             <a href="#privacy" onClick={(e) => e.preventDefault()} style={{ color: '#9CA3AF', textDecoration: 'underline' }}>Privacy Policy</a>

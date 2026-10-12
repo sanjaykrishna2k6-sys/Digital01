@@ -77,7 +77,7 @@ export function AnalyticsPage() {
     if (!data) return
 
     const rows = [
-      ['Scalevo Digital Marketing Platform - Analytics Export'],
+      ['Krishpo Digital Marketing Platform - Analytics Export'],
       [`Date Range: ${dateRange}`, `Channel: ${channelFilter}`, `Exported At: ${new Date().toLocaleString()}`],
       [],
       ['--- Campaign Summary ---'],
@@ -114,7 +114,7 @@ export function AnalyticsPage() {
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `scalevo-analytics-${dateRange}-${Date.now()}.csv`)
+    link.setAttribute('download', `krishpo-analytics-${dateRange}-${Date.now()}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

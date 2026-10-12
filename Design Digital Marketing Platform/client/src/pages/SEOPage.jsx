@@ -298,6 +298,32 @@ export function SEOPage() {
     }
   }
 
+  const handleConvertIssueToTask = async (issueId) => {
+    try {
+      setActionLoading(true)
+      await seoService.convertSEOIssueToTask(issueId)
+      setFeedback({ type: 'success', message: 'SEO Issue successfully converted into an agency task!' })
+      loadTabData()
+    } catch (err) {
+      setFeedback({ type: 'error', message: err.message || 'Task conversion failed.' })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleVerifyIssueFix = async (issueId) => {
+    try {
+      setActionLoading(true)
+      await seoService.verifySEOIssueFix(issueId)
+      setFeedback({ type: 'success', message: 'SEO Issue verified and updated to Resolved!' })
+      loadTabData()
+    } catch (err) {
+      setFeedback({ type: 'error', message: err.message || 'Verification failed.' })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const handleCreateReport = async (e) => {
     e.preventDefault()
     try {
@@ -618,12 +644,13 @@ export function SEOPage() {
                       <th className="px-4 py-3">Severity</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Recommendation</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F3F4F6]">
                     {issues.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-[#6B7280]">
+                        <td colSpan={6} className="py-8 text-center text-[#6B7280]">
                           No technical issues detected. Run an audit to scan website structure.
                         </td>
                       </tr>
@@ -649,6 +676,34 @@ export function SEOPage() {
                             <Badge variant={i.status === 'Resolved' ? 'success' : 'info'}>{i.status}</Badge>
                           </td>
                           <td className="px-4 py-3 text-[#6B7280] max-w-md">{i.recommendation || i.description}</td>
+                          <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
+                            {i.status !== 'Resolved' ? (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={actionLoading || !!i.taskId}
+                                  onClick={() => handleConvertIssueToTask(i._id)}
+                                  className="text-[11px] py-1 px-2 text-[#4F46E5] border-[#C7D2FE] bg-[#EEF2FF] hover:bg-[#E0E7FF]"
+                                >
+                                  {i.taskId ? 'Task Active' : 'Convert to Task'}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={actionLoading}
+                                  onClick={() => handleVerifyIssueFix(i._id)}
+                                  className="text-[11px] py-1 px-2 text-[#16A34A] border-[#BBF7D0] bg-[#F0FDF4] hover:bg-[#DCFCE7]"
+                                >
+                                  Verify Fix
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-[11px] font-semibold text-[#16A34A] inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       ))
                     )}

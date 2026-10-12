@@ -56,7 +56,7 @@ export function DesignSystemPage() {
   ]
 
   const typeScale = [
-    { name: 'Display', size: '36px', weight: '800', lh: '1.1', sample: 'Scalevo Agency Suite' },
+    { name: 'Display', size: '36px', weight: '800', lh: '1.1', sample: 'Krishpo Agency Suite' },
     { name: 'H1', size: '28px', weight: '700', lh: '1.2', sample: 'Agency Dashboard' },
     { name: 'H2', size: '22px', weight: '700', lh: '1.25', sample: 'Campaign Performance' },
     { name: 'H3', size: '16px', weight: '600', lh: '1.4', sample: 'Revenue Overview' },
@@ -81,8 +81,8 @@ export function DesignSystemPage() {
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#EEF2FF', borderRadius: 6, padding: '4px 10px', marginBottom: 12 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Design System</span>
         </div>
-        <h1 style={{ fontSize: 30, fontWeight: 800, color: '#111827', margin: 0, letterSpacing: '-0.02em' }}>Scalevo Design System</h1>
-        <p style={{ fontSize: 15, color: '#6B7280', margin: '8px 0 0' }}>Design tokens, typography, components, and patterns for the Scalevo Agency Suite.</p>
+        <h1 style={{ fontSize: 30, fontWeight: 800, color: '#111827', margin: 0, letterSpacing: '-0.02em' }}>Krishpo Design System</h1>
+        <p style={{ fontSize: 15, color: '#6B7280', margin: '8px 0 0' }}>Design tokens, typography, components, and patterns for the Krishpo Agency Suite.</p>
       </div>
 
       {/* Colors */}
@@ -234,7 +234,7 @@ export function DesignSystemPage() {
             { icon: CheckCircle, color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', title: 'Invoice paid successfully', body: 'Payment of ₹48,000 received from Urban Homes.' },
             { icon: AlertTriangle, color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', title: 'Campaign budget at 80%', body: 'Acme Fitness Meta Ads spend is approaching the monthly limit.' },
             { icon: AlertCircle, color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', title: 'Content approval overdue', body: 'GreenLeaf Foods — Blog post approval is 3 days past the deadline.' },
-            { icon: Info, color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE', title: 'New feature: SEO Rank Tracker', body: 'Track keyword rankings for all your clients directly in Scalevo.' },
+            { icon: Info, color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE', title: 'New feature: SEO Rank Tracker', body: 'Track keyword rankings for all your clients directly in Krishpo.' },
           ].map(({ icon: Icon, color, bg, border, title, body }) => (
             <div key={title} style={{ display: 'flex', gap: 12, background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: '14px 16px' }}>
               <Icon size={16} color={color} style={{ flexShrink: 0, marginTop: 1 }} />

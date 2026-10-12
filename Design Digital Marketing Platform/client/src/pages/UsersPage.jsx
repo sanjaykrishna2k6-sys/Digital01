@@ -349,7 +349,7 @@ export function UsersPage() {
               User Management
             </h1>
             <Badge variant="primary" className="font-semibold">
-              {currentUser?.organization?.name || 'Scalevo Agency'}
+              {currentUser?.organization?.name || 'Krishpo Agency'}
             </Badge>
           </div>
           <p className="text-sm text-[#6B7280] mt-1">
@@ -751,7 +751,7 @@ export function UsersPage() {
           <Input
             label="Email Address"
             type="email"
-            placeholder="e.g. rahul@scalevo.com"
+            placeholder="e.g. rahul@krishpo.com"
             value={formData.email}
             onChange={(e) =>
               setFormData({ ...formData, email: e.target.value })
@@ -855,7 +855,7 @@ export function UsersPage() {
           <Input
             label="Email Address"
             type="email"
-            placeholder="e.g. rahul@scalevo.com"
+            placeholder="e.g. rahul@krishpo.com"
             value={formData.email}
             onChange={(e) =>
               setFormData({ ...formData, email: e.target.value })
