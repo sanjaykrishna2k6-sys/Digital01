@@ -126,8 +126,10 @@ export function SEOPage() {
         seoService.fetchSEOProjects(),
         clientService.getClients ? clientService.getClients() : [],
       ])
-      setProjects(projList)
-      setClients(clientList.clients || clientList || [])
+      const safeProjects = Array.isArray(projList) ? projList : (projList?.projects || [])
+      const safeClients = clientList?.data?.clients || clientList?.clients || (Array.isArray(clientList) ? clientList : [])
+      setProjects(safeProjects)
+      setClients(safeClients)
     } catch (err) {
       console.warn('Initial options load notice:', err.message)
     }

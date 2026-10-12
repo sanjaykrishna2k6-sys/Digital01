@@ -6,10 +6,12 @@ import { Button } from './Button'
 export function ErrorState({
   title = 'Failed to load data',
   description = 'There was an error retrieving the requested information. Please try again.',
+  message,
   retryLabel = 'Try Again',
   onRetry,
   className,
 }) {
+  const displayDescription = message || description
   return (
     <div
       className={cn(
@@ -22,7 +24,7 @@ export function ErrorState({
       </div>
 
       <h4 className="text-sm font-semibold text-[#374151] mb-1.5">{title}</h4>
-      <p className="text-xs text-[#9CA3AF] mb-5 max-w-xs">{description}</p>
+      <p className="text-xs text-[#9CA3AF] mb-5 max-w-xs">{displayDescription}</p>
 
       {onRetry && (
         <Button

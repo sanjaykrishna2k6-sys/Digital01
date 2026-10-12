@@ -2,10 +2,16 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import fs from 'fs'
 import { apiRateLimiter } from './middleware/rateLimiter.js'
 import { notFoundHandler } from './middleware/notFoundHandler.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import routes from './routes/index.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const app = express()
 
@@ -67,10 +73,23 @@ app.get('/', (req, res) => {
 // 5. API Routes
 app.use('/api', routes)
 
-// 6. 404 Not Found Handler
+// 6. Serve frontend client static build in production if available
+const clientDistPath = path.resolve(__dirname, '../../Design Digital Marketing Platform/client/dist')
+const rootDistPath = path.resolve(__dirname, '../../dist')
+const activeDist = fs.existsSync(clientDistPath) ? clientDistPath : (fs.existsSync(rootDistPath) ? rootDistPath : null)
+
+if (activeDist) {
+  app.use(express.static(activeDist))
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next()
+    res.sendFile(path.join(activeDist, 'index.html'))
+  })
+}
+
+// 7. 404 Not Found Handler for unmatched API routes
 app.use(notFoundHandler)
 
-// 7. Centralized Error Handler
+// 8. Centralized Error Handler
 app.use(errorHandler)
 
 export default app

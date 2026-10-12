@@ -105,9 +105,9 @@ export function LeadsPage() {
         campaignService.fetchCampaigns().catch(() => []),
         userService.fetchUsers().catch(() => []),
       ])
-      setLeads(leadsData)
-      setCampaigns(campaignsData)
-      setTeamMembers(usersData)
+      setLeads(Array.isArray(leadsData) ? leadsData : (leadsData?.leads || []))
+      setCampaigns(Array.isArray(campaignsData) ? campaignsData : (campaignsData?.campaigns || []))
+      setTeamMembers(Array.isArray(usersData) ? usersData : (usersData?.users || []))
     } catch (err) {
       console.error(err)
       setError(err.message || 'Failed to load lead pipeline.')
