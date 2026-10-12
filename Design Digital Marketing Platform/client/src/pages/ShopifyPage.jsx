@@ -8,7 +8,7 @@ import {
   Package,
   ShoppingCart,
   Users,
-  DollarSign,
+  IndianRupee,
   Search,
   Filter,
   CheckCircle2,
@@ -247,16 +247,17 @@ export function ShopifyPage() {
     }
   }
 
-  // Format currency
-  const formatCurrency = (val, currency = 'USD') => {
+  // Format currency in Indian Rupees
+  const formatCurrency = (val, currency = 'INR') => {
     if (typeof val !== 'number') return '—'
     try {
-      return new Intl.NumberFormat('en-US', {
+      return new Intl.NumberFormat('en-IN', {
         style: 'currency',
-        currency: currency || 'USD',
+        currency: 'INR',
+        maximumFractionDigits: 0,
       }).format(val)
     } catch {
-      return `$${val.toFixed(2)}`
+      return `₹${val.toLocaleString('en-IN')}`
     }
   }
 
@@ -399,8 +400,8 @@ export function ShopifyPage() {
                   <Badge variant={store?.status === 'connected' ? 'success' : 'warning'} dot>
                     {store?.status === 'connected' ? 'Connected Store' : store?.status?.toUpperCase()}
                   </Badge>
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#4B5563]">
-                    {store?.currency || 'USD'}
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {store?.currency === 'USD' ? 'INR (₹)' : (store?.currency || 'INR (₹)')}
                   </span>
                 </div>
 
@@ -492,8 +493,8 @@ export function ShopifyPage() {
           />
           <KpiCard
             label="Currency & Region"
-            value={`${store?.currency || 'USD'} • ${store?.country || 'US'}`}
-            icon={DollarSign}
+            value={`${store?.currency === 'USD' ? 'INR (₹)' : (store?.currency || 'INR (₹)')} • ${store?.country === 'US' ? 'IN' : (store?.country || 'IN')}`}
+            icon={IndianRupee}
             iconBg="#FFFBEB"
             iconColor="#D97706"
             timeframe="Store Configuration"

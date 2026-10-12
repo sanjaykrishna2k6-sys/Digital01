@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Receipt,
-  DollarSign,
+  IndianRupee,
   Plus,
   CheckCircle2,
   Clock,
@@ -551,7 +551,7 @@ export function BillingPage() {
           value={formatINR(summary?.retainerMRR || 0)}
           change={`${summary?.activeRetainersCount || 0} Active Contracts`}
           positive={true}
-          icon={DollarSign}
+          icon={IndianRupee}
           iconBg="#EEF2FF"
           iconColor="#4F46E5"
         />

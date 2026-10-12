@@ -11,7 +11,7 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle2,
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   Award,
   User,
@@ -378,7 +378,7 @@ export function LeadsPage() {
             <p className="text-xs text-slate-400 mt-1">Estimated open pipeline</p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700">
-            <DollarSign className="w-6 h-6" />
+            <IndianRupee className="w-6 h-6" />
           </div>
         </Card>
       </div>

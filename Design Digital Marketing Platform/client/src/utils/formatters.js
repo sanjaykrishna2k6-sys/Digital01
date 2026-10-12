@@ -23,6 +23,14 @@ export function formatINR(amount) {
 }
 
 /**
+ * Universal formatCurrency helper defaulting to Indian Rupees (₹)
+ */
+export function formatCurrency(amount, currency = 'INR') {
+  if (typeof amount !== 'number') return amount || ''
+  return formatINR(amount)
+}
+
+/**
  * Format standard numbers with locale commas (e.g. 142,000)
  */
 export function formatNumber(n) {

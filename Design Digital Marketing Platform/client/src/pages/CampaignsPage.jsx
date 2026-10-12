@@ -283,7 +283,7 @@ export function CampaignsPage() {
       startDate: campaign.startDate ? campaign.startDate.split('T')[0] : '',
       endDate: campaign.endDate ? campaign.endDate.split('T')[0] : '',
       budget: campaign.budget !== undefined ? campaign.budget : '',
-      currency: campaign.currency || 'USD',
+      currency: campaign.currency === 'USD' ? 'INR' : (campaign.currency || 'INR'),
       targetAudience: campaign.targetAudience || '',
       channels: campaign.channels?.length ? campaign.channels : [campaign.campaignType || 'SEO'],
       goals: campaign.goals || '',

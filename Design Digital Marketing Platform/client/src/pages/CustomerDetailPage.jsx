@@ -6,7 +6,7 @@ import {
   Phone,
   Building,
   Calendar,
-  DollarSign,
+  IndianRupee,
   UserCheck,
   Edit2,
   Trash2,

@@ -13,7 +13,7 @@ import {
   Eye,
   AlertCircle,
   CheckCircle2,
-  DollarSign,
+  IndianRupee,
   UserCheck,
 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
@@ -307,7 +307,7 @@ export function CustomersPage() {
             <p className="text-2xl font-bold text-[#111827] mt-1">{formatINR(stats.totalSpend)}</p>
           </div>
           <div className="w-10 h-10 rounded-[10px] bg-[#EEF2FF] flex items-center justify-center text-[#4F46E5]">
-            <DollarSign className="w-5 h-5" />
+            <IndianRupee className="w-5 h-5" />
           </div>
         </div>
       </div>

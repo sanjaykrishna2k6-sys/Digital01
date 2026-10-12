@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   Calendar,
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   Users,
   Target,
@@ -71,7 +71,7 @@ export function CampaignDetailsPage() {
     startDate: '',
     endDate: '',
     budget: '',
-    currency: 'USD',
+    currency: 'INR',
     targetAudience: '',
     channels: [],
     goals: '',
@@ -354,11 +354,11 @@ export function CampaignDetailsPage() {
         <Card className="p-4 space-y-2">
           <div className="flex items-center justify-between text-xs text-[#6B7280]">
             <span className="font-medium">Budget & Spend</span>
-            <DollarSign className="w-4 h-4 text-[#4F46E5]" />
+            <IndianRupee className="w-4 h-4 text-[#4F46E5]" />
           </div>
           <div className="text-xl font-bold text-[#111827]">
-            ${Number(stats.spend || m.spend || 0).toLocaleString()}{' '}
-            <span className="text-xs font-normal text-[#6B7280]">/ ${Number(campaign.budget || 0).toLocaleString()}</span>
+            ₹{Number(stats.spend || m.spend || 0).toLocaleString('en-IN')}{' '}
+            <span className="text-xs font-normal text-[#6B7280]">/ ₹{Number(campaign.budget || 0).toLocaleString('en-IN')}</span>
           </div>
           {/* Progress bar */}
           <div className="w-full bg-[#E5E7EB] rounded-full h-2 overflow-hidden">
@@ -368,7 +368,7 @@ export function CampaignDetailsPage() {
             />
           </div>
           <p className="text-[11px] text-[#6B7280]">
-            {stats.budgetPacingPercent || 0}% budget utilized (${Number(stats.budgetRemaining || 0).toLocaleString()} remaining)
+            {stats.budgetPacingPercent || 0}% budget utilized (₹{Number(stats.budgetRemaining || 0).toLocaleString('en-IN')} remaining)
           </p>
         </Card>
 
@@ -439,7 +439,7 @@ export function CampaignDetailsPage() {
               </div>
               <div>
                 <span className="text-[#6B7280] block">Currency</span>
-                <span className="font-semibold text-[#111827] mt-0.5 block">{campaign.currency || 'USD'}</span>
+                <span className="font-semibold text-[#111827] mt-0.5 block">{campaign.currency === 'USD' ? 'INR (₹)' : (campaign.currency || 'INR (₹)')}</span>
               </div>
               <div>
                 <span className="text-[#6B7280] block">Start Date</span>

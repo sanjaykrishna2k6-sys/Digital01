@@ -9,7 +9,7 @@ import {
   AlertCircle,
   Lock,
   Globe,
-  DollarSign,
+  IndianRupee,
   Key,
 } from 'lucide-react'
 import { Card } from '../components/ui/Card'

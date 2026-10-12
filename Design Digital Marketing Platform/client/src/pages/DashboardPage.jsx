@@ -13,7 +13,7 @@ import {
   RefreshCw,
   ExternalLink,
   Target,
-  DollarSign,
+  IndianRupee,
   ArrowUpRight,
   MousePointer,
   AlertTriangle,
@@ -144,7 +144,7 @@ export function DashboardPage() {
           value={formatINR(kpis.outstandingPayments || 0)}
           change="Pending Invoices"
           positive={false}
-          icon={DollarSign}
+          icon={IndianRupee}
           iconBg="#FEF2F2"
           iconColor="#EF4444"
         />

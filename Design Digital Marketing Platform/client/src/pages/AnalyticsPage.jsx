@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   BarChart3,
   TrendingUp,
-  DollarSign,
+  IndianRupee,
   Users,
   Target,
   MousePointer,
@@ -208,7 +208,7 @@ export function AnalyticsPage() {
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Spend</span>
               <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <DollarSign className="w-4 h-4" />
+                <IndianRupee className="w-4 h-4" />
               </div>
             </div>
             <div className="text-2xl font-bold text-slate-900 mt-2">

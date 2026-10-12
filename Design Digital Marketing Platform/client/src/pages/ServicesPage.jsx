@@ -4,7 +4,7 @@ import {
   Layers,
   Search,
   CheckCircle2,
-  DollarSign,
+  IndianRupee,
   Users,
   Briefcase,
   Star,
@@ -122,7 +122,7 @@ export function ServicesPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Active Service Offerings" value={String(SERVICES_CATALOG.length)} change="Available in Catalog" positive={true} icon={Layers} iconBg="#EEF2FF" iconColor="#4F46E5" />
         <KpiCard label="Subscribed Client Packages" value="75" change="+8 this month" positive={true} icon={Users} iconBg="#F0FDF4" iconColor="#16A34A" />
-        <KpiCard label="Average Retainer Value" value={formatINR(58000)} change="Per client / mo" positive={true} icon={DollarSign} iconBg="#EFF6FF" iconColor="#2563EB" />
+        <KpiCard label="Average Retainer Value" value={formatINR(58000)} change="Per client / mo" positive={true} icon={IndianRupee} iconBg="#EFF6FF" iconColor="#2563EB" />
         <KpiCard label="Client Satisfaction" value="4.86 / 5.0" change="Based on 42 reviews" positive={true} icon={Star} iconBg="#FFFBEB" iconColor="#D97706" />
       </div>
 

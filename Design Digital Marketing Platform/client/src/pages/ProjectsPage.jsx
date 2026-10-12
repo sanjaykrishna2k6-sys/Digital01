@@ -320,7 +320,7 @@ export function ProjectsPage() {
       startDate: project.startDate ? project.startDate.split('T')[0] : '',
       endDate: project.endDate ? project.endDate.split('T')[0] : '',
       budget: project.budget !== undefined ? project.budget : 0,
-      currency: project.currency || 'USD',
+      currency: project.currency === 'USD' ? 'INR' : (project.currency || 'INR'),
       progress: project.progress || 0,
       goals: project.goals || '',
       deliverables: Array.isArray(project.deliverables) ? project.deliverables.join('\n') : '',
