@@ -30,6 +30,7 @@ import { ApprovalsPage } from '../pages/ApprovalsPage'
 import { CampaignsPage } from '../pages/CampaignsPage'
 import { CampaignDetailsPage } from '../pages/CampaignDetailsPage'
 import { SEOPage } from '../pages/SEOPage'
+import { AIMarketingAssistantPage } from '../pages/AIMarketingAssistantPage'
 import { ShopifyPage } from '../pages/ShopifyPage'
 import { AnalyticsPage } from '../pages/AnalyticsPage'
 import { ReportsPage } from '../pages/ReportsPage'
@@ -106,6 +107,8 @@ export function AppRoutes() {
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/:id" element={<CampaignDetailsPage />} />
             <Route path="/seo" element={<SEOPage />} />
+            <Route path="/ai-marketing-assistant" element={<AIMarketingAssistantPage />} />
+            <Route path="/ai" element={<AIMarketingAssistantPage />} />
             <Route path="/shopify" element={<ShopifyPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/reports" element={<ReportsPage />} />

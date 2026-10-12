@@ -1,4 +1,7 @@
 import mongoose from 'mongoose'
+import AIGeneration from '../models/AIGeneration.js'
+import AISavedItem from '../models/AISavedItem.js'
+import AIConversation from '../models/AIConversation.js'
 import Client from '../models/Client.js'
 import SEOProject from '../models/SEOProject.js'
 import SEOIssue from '../models/SEOIssue.js'
@@ -8,13 +11,460 @@ import ShopifyOrder from '../models/ShopifyOrder.js'
 import ShopifyProduct from '../models/ShopifyProduct.js'
 import Campaign from '../models/Campaign.js'
 import Task from '../models/Task.js'
+import Organization from '../models/Organization.js'
+import {
+  generateMarketingContent,
+  generateSEOAnalysis,
+  generateCampaignPlan,
+  handleMarketingChat,
+  validateSafePublicUrl,
+} from '../services/aiEngine.service.js'
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id)
 
 /**
- * AI Marketing Assistant Query Engine.
- * Answers user questions strictly grounded in actual connected organization & client metrics.
- * POST /api/ai/query
+ * POST /api/ai/generate-content
+ */
+export async function generateContent(req, res, next) {
+  try {
+    const {
+      brandName,
+      productService,
+      platform,
+      contentType,
+      objective,
+      targetAudience,
+      tone,
+      cta,
+      language,
+      keywords,
+      length,
+      clientId,
+    } = req.body
+
+    if (!productService && !brandName) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Brand name or product/service description is required.',
+      })
+    }
+
+    const result = await generateMarketingContent({
+      brandName: brandName || 'Krishpo Client',
+      productService,
+      platform: platform || 'Instagram',
+      contentType: contentType || 'Social Post',
+      objective: objective || 'Brand Awareness',
+      targetAudience: targetAudience || 'Target Demographic',
+      tone: tone || 'Engaging & Professional',
+      cta: cta || 'Learn More',
+      language: language || 'English',
+      keywords: keywords || [],
+      length: length || 'Medium',
+    })
+
+    // Persist to AIGeneration
+    const generation = await AIGeneration.create({
+      organizationId: req.organizationId,
+      userId: req.user._id,
+      clientId: clientId && isValidId(clientId) ? clientId : null,
+      type: 'content',
+      title: `${platform || 'Social'} Copy: ${productService || brandName || 'Campaign'}`,
+      inputParams: req.body,
+      prompt: `Generate ${contentType || 'content'} for ${platform || 'social'} - ${productService || brandName}`,
+      outputContent: result.content,
+      provider: result.provider,
+      model: result.model,
+      tokenUsage: result.tokenUsage,
+    })
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        generationId: generation._id,
+        content: result.content,
+        provider: result.provider,
+        model: result.model,
+        tokenUsage: result.tokenUsage,
+        createdAt: generation.createdAt,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * POST /api/ai/seo-assistant (or /api/ai/seo-analysis)
+ */
+export async function seoAssistant(req, res, next) {
+  try {
+    const { url, pageContent, targetKeywords, industry, clientId } = req.body
+
+    if (!url && !pageContent) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Either website URL or page content snippet is required.',
+      })
+    }
+
+    let safeUrl = ''
+    if (url) {
+      safeUrl = await validateSafePublicUrl(url)
+    }
+
+    const result = await generateSEOAnalysis({
+      url: safeUrl,
+      pageContent,
+      targetKeywords,
+      industry: industry || 'Digital Marketing & E-Commerce',
+    })
+
+    const title = safeUrl ? `SEO Audit: ${new URL(safeUrl).hostname}` : `SEO Analysis: ${targetKeywords || 'Page Content'}`
+
+    const generation = await AIGeneration.create({
+      organizationId: req.organizationId,
+      userId: req.user._id,
+      clientId: clientId && isValidId(clientId) ? clientId : null,
+      type: 'seo',
+      title,
+      inputParams: { url: safeUrl, targetKeywords, industry },
+      prompt: `SEO Analysis for ${safeUrl || targetKeywords}`,
+      outputContent: JSON.stringify(result),
+      parsedData: result,
+      provider: result.provider,
+      model: result.model,
+    })
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        generationId: generation._id,
+        analysis: result,
+        provider: result.provider,
+        model: result.model,
+        createdAt: generation.createdAt,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * POST /api/ai/campaign-plan
+ */
+export async function campaignPlan(req, res, next) {
+  try {
+    const {
+      objective,
+      productName,
+      targetMarket,
+      budget,
+      durationWeeks,
+      preferredChannels,
+      clientId,
+    } = req.body
+
+    if (!productName) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Campaign product or service name is required.',
+      })
+    }
+
+    const result = await generateCampaignPlan({
+      objective: objective || 'Lead Generation',
+      productName,
+      targetMarket: targetMarket || 'India & Tier-1 Cities',
+      budget: Number(budget) || 100000,
+      durationWeeks: Number(durationWeeks) || 4,
+      preferredChannels: Array.isArray(preferredChannels) && preferredChannels.length ? preferredChannels : ['Meta Ads', 'Google Ads', 'SEO'],
+    })
+
+    const generation = await AIGeneration.create({
+      organizationId: req.organizationId,
+      userId: req.user._id,
+      clientId: clientId && isValidId(clientId) ? clientId : null,
+      type: 'campaign',
+      title: `Campaign Blueprint: ${productName} (${objective || 'Growth'})`,
+      inputParams: req.body,
+      prompt: `Campaign Plan for ${productName} - ₹${budget || 100000}`,
+      outputContent: JSON.stringify(result),
+      parsedData: result,
+      provider: result.provider,
+      model: result.model,
+    })
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        generationId: generation._id,
+        plan: result,
+        provider: result.provider,
+        model: result.model,
+        createdAt: generation.createdAt,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * POST /api/ai/chat
+ */
+export async function marketingChat(req, res, next) {
+  try {
+    const { message, conversationId, clientId } = req.body
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Chat message content is required.',
+      })
+    }
+
+    const orgId = req.organizationId
+
+    // Find or create conversation
+    let conversation = null
+    if (conversationId && isValidId(conversationId)) {
+      conversation = await AIConversation.findOne({ _id: conversationId, organizationId: orgId })
+    }
+
+    if (!conversation) {
+      conversation = await AIConversation.create({
+        organizationId: orgId,
+        userId: req.user._id,
+        title: message.trim().slice(0, 45) + (message.length > 45 ? '...' : ''),
+        messages: [],
+      })
+    }
+
+    // Add user message
+    conversation.messages.push({
+      role: 'user',
+      content: message.trim(),
+      timestamp: new Date(),
+    })
+
+    // Context gathering
+    const [org, openIssuesCount, clientRecord] = await Promise.all([
+      Organization.findById(orgId).select('name settings'),
+      SEOIssue.countDocuments({ organizationId: orgId, status: 'Open' }),
+      clientId && isValidId(clientId) ? Client.findById(clientId).select('companyName industry') : null,
+    ])
+
+    const formattedMessages = conversation.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))
+
+    const chatResponse = await handleMarketingChat(formattedMessages, {
+      organizationName: org?.name || 'Krishpo Agency',
+      clientSummary: clientRecord ? `${clientRecord.companyName} (${clientRecord.industry})` : '',
+      openIssuesCount,
+    })
+
+    // Add assistant reply
+    conversation.messages.push({
+      role: 'assistant',
+      content: chatResponse.message,
+      timestamp: new Date(),
+    })
+
+    await conversation.save()
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        conversationId: conversation._id,
+        reply: chatResponse.message,
+        messages: conversation.messages,
+        provider: chatResponse.provider,
+        model: chatResponse.model,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * GET /api/ai/history
+ */
+export async function listGenerationHistory(req, res, next) {
+  try {
+    const { type, limit = 20, page = 1 } = req.query
+    const filter = { organizationId: req.organizationId }
+
+    if (type && ['content', 'seo', 'campaign', 'chat'].includes(type)) {
+      filter.type = type
+    }
+
+    const parsedLimit = Math.min(50, Math.max(1, parseInt(limit, 10) || 20))
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1)
+    const skip = (parsedPage - 1) * parsedLimit
+
+    const [items, total] = await Promise.all([
+      AIGeneration.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .populate('userId', 'name email avatar')
+        .populate('clientId', 'companyName'),
+      AIGeneration.countDocuments(filter),
+    ])
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        items,
+        pagination: {
+          page: parsedPage,
+          limit: parsedLimit,
+          total,
+          totalPages: Math.ceil(total / parsedLimit),
+        },
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * GET /api/ai/saved
+ */
+export async function listSavedItems(req, res, next) {
+  try {
+    const { type, search } = req.query
+    const filter = { organizationId: req.organizationId }
+
+    if (type && type !== 'all') {
+      filter.type = type
+    }
+
+    if (search && typeof search === 'string') {
+      filter.title = { $regex: search.trim(), $options: 'i' }
+    }
+
+    const items = await AISavedItem.find(filter)
+      .sort({ createdAt: -1 })
+      .populate('userId', 'name email')
+
+    res.status(200).json({
+      status: 'success',
+      data: { items },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * POST /api/ai/saved
+ */
+export async function saveItem(req, res, next) {
+  try {
+    const { title, type, content, platform, metadata, tags, generationId } = req.body
+
+    if (!title || !content) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Title and content are required to save an AI marketing asset.',
+      })
+    }
+
+    const saved = await AISavedItem.create({
+      organizationId: req.organizationId,
+      userId: req.user._id,
+      generationId: generationId && isValidId(generationId) ? generationId : null,
+      type: type || 'content',
+      title: title.trim(),
+      platform: platform || 'General',
+      content,
+      metadata: metadata || {},
+      tags: Array.isArray(tags) ? tags : [],
+    })
+
+    if (generationId && isValidId(generationId)) {
+      await AIGeneration.findByIdAndUpdate(generationId, { isSaved: true })
+    }
+
+    res.status(201).json({
+      status: 'success',
+      data: { saved },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * DELETE /api/ai/saved/:id
+ */
+export async function deleteSavedItem(req, res, next) {
+  try {
+    const { id } = req.params
+    if (!isValidId(id)) {
+      return res.status(400).json({ status: 'fail', message: 'Invalid ID.' })
+    }
+
+    const item = await AISavedItem.findOneAndDelete({
+      _id: id,
+      organizationId: req.organizationId,
+    })
+
+    if (!item) {
+      return res.status(404).json({ status: 'fail', message: 'Saved item not found.' })
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Item removed from saved library.',
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * GET /api/ai/usage
+ */
+export async function getUsageStats(req, res, next) {
+  try {
+    const orgId = req.organizationId
+
+    const [totalGenerations, contentCount, seoCount, campaignCount, savedCount] = await Promise.all([
+      AIGeneration.countDocuments({ organizationId: orgId }),
+      AIGeneration.countDocuments({ organizationId: orgId, type: 'content' }),
+      AIGeneration.countDocuments({ organizationId: orgId, type: 'seo' }),
+      AIGeneration.countDocuments({ organizationId: orgId, type: 'campaign' }),
+      AISavedItem.countDocuments({ organizationId: orgId }),
+    ])
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        totalGenerations,
+        byType: {
+          content: contentCount,
+          seo: seoCount,
+          campaign: campaignCount,
+        },
+        savedCount,
+        configuredProvider: process.env.OPENAI_API_KEY ? 'OpenAI GPT-4o' : 'Krishpo Native Marketing Engine',
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * Legacy modal query engine: POST /api/ai/query
  */
 export async function queryAIMarketingAssistant(req, res, next) {
   try {
@@ -39,7 +489,6 @@ export async function queryAIMarketingAssistant(req, res, next) {
       clientFilter.clientId = req.user.clientId
     }
 
-    // Fetch real connected database records in parallel
     const [seoProject, seoIssues, seoKeywords, shopifyStore, shopifyOrders, shopifyProducts, campaigns, tasks] = await Promise.all([
       SEOProject.findOne(clientFilter),
       SEOIssue.find({ organizationId: orgId }),
@@ -51,7 +500,6 @@ export async function queryAIMarketingAssistant(req, res, next) {
       Task.find({ organizationId: orgId }),
     ])
 
-    // Calculate aggregated metrics
     const grossSales = shopifyOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0)
     const refundsTotal = shopifyOrders.reduce((sum, o) => sum + (o.totalRefunded || 0), 0)
     const netSales = Math.max(0, grossSales - refundsTotal)
@@ -59,19 +507,11 @@ export async function queryAIMarketingAssistant(req, res, next) {
     const aov = totalOrders > 0 ? (grossSales / totalOrders).toFixed(2) : '0.00'
 
     const lowStockProducts = shopifyProducts.filter((p) => (p.totalInventory || 0) <= 10)
-    const topProducts = [...shopifyProducts].sort((a, b) => (b.totalInventory || 0) - (a.totalInventory || 0)).slice(0, 3)
-
     const healthScore = seoProject?.healthScore || 85
     const organicTraffic = seoProject?.organicTraffic || 12500
     const openSEOIssues = seoIssues.filter((i) => i.status === 'Open')
     const criticalSEOIssues = seoIssues.filter((i) => i.severity === 'Critical' && i.status === 'Open')
     const topKeywords = seoKeywords.slice(0, 5)
-
-    const totalAdSpend = campaigns.reduce((sum, c) => sum + (c.spentBudget || c.budget || 0), 0)
-    const totalLeads = campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0)
-
-    const pendingTasks = tasks.filter((t) => t.status !== 'Completed')
-    const overdueTasks = tasks.filter((t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Completed')
 
     const clientName = client ? client.companyName : 'All Agency Clients'
     const qLower = question.toLowerCase()
@@ -80,7 +520,6 @@ export async function queryAIMarketingAssistant(req, res, next) {
     const recommendations = []
     let category = 'General Performance'
 
-    // Smart grounding logic based on question intent
     if (qLower.includes('organic') || qLower.includes('seo') || qLower.includes('click') || qLower.includes('decline') || qLower.includes('traffic')) {
       category = 'SEO & Organic Search'
       observations.push(`Organic traffic currently stands at ${organicTraffic.toLocaleString()} monthly visits with a domain Health Score of ${healthScore}/100.`)
@@ -92,31 +531,26 @@ export async function queryAIMarketingAssistant(req, res, next) {
       if (criticalSEOIssues.length > 0) {
         recommendations.push(`Resolve ${criticalSEOIssues.length} critical technical SEO issue(s) immediately (e.g. ${criticalSEOIssues[0].description || criticalSEOIssues[0].url}).`)
       } else {
-        recommendations.push('Run a fresh site audit to identify any new crawling bottlenecks or indexing errors.')
+        recommendations.push('Run a fresh site audit in Krishpo SEO module to identify new crawling bottlenecks.')
       }
       recommendations.push('Expand content optimization for keywords ranking between positions 4-10 to drive immediate click gains.')
-
     } else if (qLower.includes('shopify') || qLower.includes('product') || qLower.includes('sale') || qLower.includes('revenue') || qLower.includes('inventory') || qLower.includes('store')) {
       category = 'Shopify E-Commerce'
-      observations.push(`Connected Shopify Store (${shopifyStore?.shopName || shopifyStore?.shopDomain || 'Shopify'}) recorded $${netSales.toLocaleString()} in net sales across ${totalOrders} orders.`)
-      observations.push(`Average Order Value (AOV) is $${aov}.`)
+      observations.push(`Connected Shopify Store (${shopifyStore?.shopName || shopifyStore?.shopDomain || 'Shopify'}) recorded ₹${netSales.toLocaleString('en-IN')} in net sales across ${totalOrders} orders.`)
+      observations.push(`Average Order Value (AOV) is ₹${aov}.`)
       observations.push(`${lowStockProducts.length} product(s) are at or below low stock threshold (10 units).`)
 
       if (lowStockProducts.length > 0) {
         recommendations.push(`Replenish stock for low-inventory items: ${lowStockProducts.slice(0, 3).map((p) => p.title).join(', ')}.`)
       }
-      recommendations.push('Introduce post-purchase upsells or bundle packages to increase Average Order Value above $' + aov + '.')
+      recommendations.push('Introduce post-purchase upsells or bundle packages to increase Average Order Value.')
       recommendations.push('Re-engage past one-time purchasers with automated email campaigns.')
-
     } else {
       category = 'Agency Operations & Multi-Channel Overview'
-      observations.push(`Client (${clientName}): $${netSales.toLocaleString()} e-commerce revenue, ${organicTraffic.toLocaleString()} organic traffic, and $${totalAdSpend.toLocaleString()} ad spend.`)
-      observations.push(`Active Tasks: ${pendingTasks.length} pending (${overdueTasks.length} overdue).`)
+      observations.push(`Client (${clientName}): ₹${netSales.toLocaleString('en-IN')} e-commerce revenue, ${organicTraffic.toLocaleString()} organic traffic.`)
       observations.push(`Technical SEO: ${openSEOIssues.length} unresolved issues across monitored domains.`)
-
       recommendations.push('Clear overdue task backlog to maintain project delivery velocity.')
       recommendations.push('Ensure Shopify store sync and SEO crawler runs are up to date.')
-      recommendations.push('Review monthly client performance report prior to client update call.')
     }
 
     res.status(200).json({
@@ -130,7 +564,7 @@ export async function queryAIMarketingAssistant(req, res, next) {
           dataSources: [
             shopifyStore ? `Shopify Store API (${shopifyStore.shopDomain})` : 'Shopify Intelligence',
             seoProject ? `SEO Crawler & GSC API (${seoProject.website})` : 'SEO Engine',
-            'Scalevo Analytics & Operations',
+            'Krishpo Analytics & Operations',
           ],
           observations,
           recommendations,

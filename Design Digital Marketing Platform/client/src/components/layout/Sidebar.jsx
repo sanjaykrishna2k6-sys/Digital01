@@ -20,6 +20,7 @@ import {
   Layers,
   FileCheck,
   Bell,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '../../utils/formatters'
 import { useAuth } from '../../context/AuthContext'
@@ -29,6 +30,7 @@ const NAV_GROUPS = [
     title: 'Core Platform',
     items: [
       { icon: Search, label: 'SEO Intelligence', path: '/seo', badge: 'Core' },
+      { icon: Sparkles, label: 'AI Assistant', path: '/ai-marketing-assistant', badge: 'AI' },
       { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     ],
   },
