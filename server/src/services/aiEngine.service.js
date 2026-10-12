@@ -65,6 +65,71 @@ function isPrivateOrReservedIP(ip) {
 }
 
 /**
+ * Call local Ollama API (e.g. llama3.2:1b at http://127.0.0.1:11434/api/chat)
+ */
+export async function callOllamaApi(messages, options = {}) {
+  const baseUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/+$/, '')
+  const model = process.env.OLLAMA_MODEL || 'llama3.2:1b'
+  const timeoutMs = options.timeoutMs || 60000
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+        options: {
+          temperature: options.temperature ?? 0.7,
+        },
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      throw new Error(`Ollama returned status ${response.status}: ${errText || response.statusText}`)
+    }
+
+    const data = await response.json()
+    const content = data.message?.content?.trim()
+    if (!content) {
+      throw new Error(`Ollama returned an empty response. Please verify model '${model}' is running properly.`)
+    }
+
+    return {
+      content,
+      provider: 'ollama',
+      model: data.model || model,
+      tokenUsage: {
+        promptTokens: data.prompt_eval_count || 0,
+        completionTokens: data.eval_count || 0,
+        totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+      },
+    }
+  } catch (err) {
+    clearTimeout(timeoutId)
+    if (err.name === 'AbortError') {
+      throw new Error(`Ollama request timed out after ${timeoutMs / 1000} seconds. Local model '${model}' took too long to generate.`)
+    }
+    if (err.code === 'ECONNREFUSED' || err.message.includes('fetch failed')) {
+      throw new Error(
+        `Cannot connect to Ollama at ${baseUrl}. Please ensure Ollama is running ('ollama serve' or open Ollama) and model '${model}' is downloaded ('ollama run ${model}'). Note: local Ollama is only accessible when the backend runs on your local machine.`
+      )
+    }
+    throw err
+  }
+}
+
+/**
  * Call OpenAI API or OpenAI-compatible endpoint.
  */
 async function callOpenAIApi(messages, options = {}) {
@@ -97,8 +162,7 @@ async function callOpenAIApi(messages, options = {}) {
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => '')
-      console.warn(`[AIEngine] OpenAI API call failed (${response.status}):`, errBody)
-      return null
+      throw new Error(`OpenAI API failed (${response.status}): ${errBody}`)
     }
 
     const data = await response.json()
@@ -117,9 +181,22 @@ async function callOpenAIApi(messages, options = {}) {
     }
   } catch (err) {
     clearTimeout(timeoutId)
-    console.warn('[AIEngine] OpenAI request failed:', err.message)
-    return null
+    throw err
   }
+}
+
+/**
+ * Primary LLM Router: Selects Ollama (default) or OpenAI
+ */
+export async function callLLM(messages, options = {}) {
+  const provider = (process.env.AI_PROVIDER || 'ollama').toLowerCase()
+
+  if (provider === 'openai' && process.env.OPENAI_API_KEY) {
+    return await callOpenAIApi(messages, options)
+  }
+
+  // Default to Ollama (local llama3.2:1b)
+  return await callOllamaApi(messages, options)
 }
 
 /**
@@ -140,135 +217,74 @@ export async function generateMarketingContent(params) {
     length = 'Medium',
   } = params
 
-  const systemPrompt = `You are Krishpo's Lead Digital Marketing Strategist. 
-You create world-class, high-converting marketing copy tailored specifically for ${platform}.
-Format your output cleanly with engaging hooks, clear value proposition, bullet points where applicable, call-to-action, and relevant hashtags.`
+  const kwList = Array.isArray(keywords)
+    ? keywords.join(', ')
+    : typeof keywords === 'string'
+      ? keywords
+      : ''
+
+  const systemPrompt = `You are Krishpo AI, a world-class performance marketing and copywriting specialist. 
+Your task is to write high-converting, platform-tailored marketing content for ${platform}.
+Format the output cleanly with an engaging headline/hook, compelling body copy, clear call to action, and relevant hashtags where appropriate.`
 
   const userPrompt = `Generate a ${contentType} for ${platform} in ${language}.
-Brand/Business: ${brandName}
-Product/Service: ${productService}
-Objective: ${objective}
+
+Brand / Business: ${brandName}
+Product or Service: ${productService}
+Marketing Objective: ${objective}
 Target Audience: ${targetAudience}
 Tone of Voice: ${tone}
-Primary CTA: ${cta}
+Call to Action (CTA): ${cta}
+Keywords to include: ${kwList || 'None specified'}
 Desired Length: ${length}
-Keywords to include: ${Array.isArray(keywords) ? keywords.join(', ') : keywords}
 
-Output structure:
-1. Hook / Headline
-2. Main Body Copy
-3. Call to Action (CTA)
-4. Recommended Hashtags (if applicable)
-5. Creative / Visual Suggestion for designer`
+Please output the complete, ready-to-publish copy with a strong hook, structured body, CTA, and hashtags.`
 
-  // Try real OpenAI API first if key configured
-  const apiResult = await callOpenAIApi([
+  return await callLLM([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ])
-
-  if (apiResult && apiResult.content) {
-    return {
-      content: apiResult.content,
-      provider: apiResult.provider,
-      model: apiResult.model,
-      tokenUsage: apiResult.tokenUsage,
-    }
-  }
-
-  // Domain-specific smart generator when API key is unconfigured
-  let generatedText = ''
-  const kwList = Array.isArray(keywords) && keywords.length ? keywords : [productService || 'growth', 'digital marketing']
-
-  if (platform === 'Instagram') {
-    generatedText = `✨ Stop scrolling if you want to scale ${productService || 'your business'} without the burnout.
-
-Most ${targetAudience} struggle with consistency and measurable ROI. But here is what happens when you focus on high-impact strategy over busywork:
-
-🚀 3 Core Game-Changers:
-• Data-backed campaigns designed specifically for your audience.
-• High-converting creatives that convert attention into qualified pipeline.
-• Real-time attribution tracking so every single rupee spent drives return.
-
-Are you ready to stop guessing and start multiplying your growth?
-
-👉 ${cta || 'Tap the link in our bio to book your free strategy audit today!'}
-
-#${brandName.replace(/\s+/g, '')} #DigitalMarketing #GrowthStrategy #${kwList[0].replace(/\s+/g, '')} #MarketingAgency #BusinessScaling #ROI`
-  } else if (platform === 'LinkedIn') {
-    generatedText = `In 2026, the brands winning market share aren't the loudest—they're the most relevant.
-
-Here is what we observed working with ${targetAudience}:
-
-When promoting ${productService || 'core offerings'}, 80% of agencies focus purely on surface metrics. But true sustainable enterprise growth comes from:
-
-1. High-Intent Positioning: Speaking directly to decision-makers' pain points.
-2. Predictable Attribution: Tracking organic search and paid conversions back to pipeline revenue.
-3. Rapid Creative Testing: Validating messaging hooks before scaling ad budgets.
-
-The question isn't whether you should optimize your marketing—it's how much revenue you're leaving on the table right now.
-
-${cta || 'Drop a comment below or send a message to explore how Krishpo drives measurable retainer growth for modern businesses.'}
-
-#MarketingStrategy #B2BGrowth #AgencyLeadership #Krishpo #${kwList[0].replace(/\s+/g, '')}`
-  } else if (platform === 'Google Ads') {
-    generatedText = `Headline 1: ${brandName} | Scale Your Marketing
-Headline 2: ${productService || 'High-Impact Agency Solutions'}
-Headline 3: Verified Results & Fast Setup
-
-Description 1: Partner with Krishpo to drive high-intent leads and maximize ROAS. Schedule your free consultation today.
-Description 2: Comprehensive SEO audits, performance ad campaigns, and retainer growth engineered for modern businesses.
-
-Display Path: krishpo.com/growth
-Call to Action: ${cta || 'Get Started'}`
-  } else if (platform === 'Email') {
-    generatedText = `Subject: The single biggest lever for scaling ${productService || 'your brand'} this quarter
-
-Hi {{FirstName}},
-
-If you're like most ambitious leaders targeting ${targetAudience}, you've probably wondered why marketing campaigns sometimes stall after initial traction.
-
-The truth? It rarely comes down to ad spend—it comes down to end-to-end alignment.
-
-At ${brandName}, we built a proven framework to help you:
-✓ Capture qualified demand across organic search and Google Ads
-✓ Double conversion rates on high-intent landing pages
-✓ Retain high-LTV customers through personalized workflows
-
-We’re opening up 5 dedicated audit slots this week for businesses ready to break their revenue plateau.
-
-👉 ${cta || 'Click here to reserve your 20-minute growth roadmap session'}.
-
-Best regards,
-The ${brandName} Team`
-  } else {
-    generatedText = `# Complete Guide: How to Accelerate Growth with ${productService || brandName}
-
-## Introduction
-In today's fast-paced digital environment, reaching ${targetAudience} requires strategic clarity, technical SEO precision, and compelling storytelling.
-
-## Why ${kwList[0] || 'Optimization'} Matters More Than Ever
-Understanding customer search intent and delivering immediate value is the foundation of high-converting brands.
-
-### Key Pillars for Success:
-1. **Audience-Centric Messaging:** Resonating with genuine user pain points.
-2. **Technical SEO Foundation:** Ensuring pages load fast, crawl cleanly, and rank in top Google SERP positions.
-3. **Actionable Conversion Pathways:** Guiding visitors clearly toward the ${cta}.
-
-## Conclusion & Next Steps
-Ready to take your digital performance to the next level? ${cta || 'Connect with Krishpo today and unlock your agency growth potential.'}`
-  }
-
-  return {
-    content: generatedText,
-    provider: 'krishpo-engine',
-    model: 'krishpo-marketing-v1',
-    tokenUsage: { promptTokens: 140, completionTokens: 380, totalTokens: 520 },
-  }
 }
 
 /**
- * 2. AI SEO Assistant
+ * 2. Improve Existing Marketing Content
+ */
+export async function improveMarketingContent(params) {
+  const {
+    currentContent = '',
+    instruction = 'Make it punchier, improve the hook, and strengthen the call to action',
+    brandName = '',
+    platform = 'Social Media',
+    tone = 'Engaging',
+  } = params
+
+  if (!currentContent || !currentContent.trim()) {
+    throw new Error('Current content is required to improve.')
+  }
+
+  const systemPrompt = `You are Krishpo AI, an expert copy editor and conversion rate optimization specialist.
+Improve and refine the user's existing marketing copy according to their instructions while preserving the core offer and tone.`
+
+  const userPrompt = `Improve the following ${platform} copy for brand "${brandName || 'Brand'}":
+
+Instruction: ${instruction}
+Tone target: ${tone}
+
+Original Copy:
+"""
+${currentContent}
+"""
+
+Return only the improved, revised marketing copy.`
+
+  return await callLLM([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ])
+}
+
+/**
+ * 3. AI SEO Assistant
  */
 export async function generateSEOAnalysis(params) {
   const { url = '', pageContent = '', targetKeywords = '', industry = 'Digital Marketing' } = params

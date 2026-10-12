@@ -1,7 +1,10 @@
 import express from 'express'
 import { requireAuth, requireTenantScope } from '../middleware/auth.js'
+import { aiRateLimiter } from '../middleware/rateLimiter.js'
 import {
   generateContent,
+  improveContent,
+  getProviderStatus,
   seoAssistant,
   campaignPlan,
   marketingChat,
@@ -18,12 +21,16 @@ const router = express.Router()
 router.use(requireAuth)
 router.use(requireTenantScope)
 
+// Provider Status Check
+router.get('/provider-status', getProviderStatus)
+
 // Core Generative Features
-router.post('/generate-content', generateContent)
-router.post('/seo-assistant', seoAssistant)
-router.post('/seo-analysis', seoAssistant) // alias
-router.post('/campaign-plan', campaignPlan)
-router.post('/chat', marketingChat)
+router.post('/generate-content', aiRateLimiter, generateContent)
+router.post('/improve-content', aiRateLimiter, improveContent)
+router.post('/seo-assistant', aiRateLimiter, seoAssistant)
+router.post('/seo-analysis', aiRateLimiter, seoAssistant) // alias
+router.post('/campaign-plan', aiRateLimiter, campaignPlan)
+router.post('/chat', aiRateLimiter, marketingChat)
 
 // History, Library & Usage
 router.get('/history', listGenerationHistory)

@@ -97,8 +97,17 @@ async function runTests() {
     const unauthRes = await fetch(`${baseUrl}/api/ai/generate-content`, { method: 'POST' })
     assert(unauthRes.status === 401, 'Unauthenticated request to /api/ai/generate-content returns 401 Unauthorized')
 
-    // Suite 2: AI Content Generator
-    console.log('\n[Suite 2: AI Content Generator]')
+    // Suite 2: AI Provider Status Check
+    console.log('\n[Suite 2: AI Provider & Ollama Configuration]')
+    const statusRes = await fetch(`${baseUrl}/api/ai/provider-status`, { headers: headersA })
+    const statusData = await statusRes.json()
+    assert(
+      statusRes.status === 200 && statusData.data?.provider === 'ollama' && statusData.data?.model === 'llama3.2:1b',
+      'GET /api/ai/provider-status returns Ollama provider and llama3.2:1b model'
+    )
+
+    // Suite 3: AI Content Generator & Ollama llama3.2:1b
+    console.log('\n[Suite 3: AI Content Generator & Ollama llama3.2:1b]')
     const invalidRes = await fetch(`${baseUrl}/api/ai/generate-content`, {
       method: 'POST',
       headers: headersA,
@@ -122,9 +131,27 @@ async function runTests() {
     const contentData = await contentRes.json()
     assert(
       contentRes.status === 200 && contentData.data?.content && contentData.data?.generationId,
-      'Generates platform-tailored copy and returns generation ID'
+      'Generates platform-tailored copy using Ollama llama3.2:1b and returns generation ID'
     )
     const genIdA = contentData.data?.generationId
+
+    // Improve Content Action
+    const improveRes = await fetch(`${baseUrl}/api/ai/improve-content`, {
+      method: 'POST',
+      headers: headersA,
+      body: JSON.stringify({
+        currentContent: contentData.data.content,
+        instruction: 'Make it punchier with high urgency',
+        brandName: 'Krishpo Organic Foods',
+        platform: 'Instagram',
+      }),
+    })
+    const improveData = await improveRes.json()
+    assert(
+      improveRes.status === 200 && improveData.data?.content,
+      'POST /api/ai/improve-content refines copy through Ollama and returns improved version'
+    )
+
 
     // Suite 3: AI SEO Assistant & SSRF Protection
     console.log('\n[Suite 3: AI SEO Assistant & SSRF Security]')

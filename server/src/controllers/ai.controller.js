@@ -14,6 +14,7 @@ import Task from '../models/Task.js'
 import Organization from '../models/Organization.js'
 import {
   generateMarketingContent,
+  improveMarketingContent,
   generateSEOAnalysis,
   generateCampaignPlan,
   handleMarketingChat,
@@ -93,6 +94,100 @@ export async function generateContent(req, res, next) {
     next(err)
   }
 }
+
+/**
+ * POST /api/ai/improve-content
+ */
+export async function improveContent(req, res, next) {
+  try {
+    const { currentContent, instruction, brandName, platform, tone, clientId } = req.body
+
+    if (!currentContent || typeof currentContent !== 'string' || !currentContent.trim()) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Current content is required to improve.',
+      })
+    }
+
+    const result = await improveMarketingContent({
+      currentContent,
+      instruction: instruction || 'Make it punchier, improve the hook, and strengthen the call to action',
+      brandName: brandName || 'Krishpo Client',
+      platform: platform || 'Social Media',
+      tone: tone || 'Engaging',
+    })
+
+    const generation = await AIGeneration.create({
+      organizationId: req.organizationId,
+      userId: req.user._id,
+      clientId: clientId && isValidId(clientId) ? clientId : null,
+      type: 'content',
+      title: `Improved ${platform || 'Content'}: ${(instruction || 'Polished copy').slice(0, 30)}`,
+      inputParams: req.body,
+      prompt: `Improve copy: ${instruction || 'Polish'}`,
+      outputContent: result.content,
+      provider: result.provider,
+      model: result.model,
+      tokenUsage: result.tokenUsage,
+    })
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        generationId: generation._id,
+        content: result.content,
+        provider: result.provider,
+        model: result.model,
+        tokenUsage: result.tokenUsage,
+        createdAt: generation.createdAt,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * GET /api/ai/provider-status
+ */
+export async function getProviderStatus(req, res, next) {
+  try {
+    const provider = process.env.AI_PROVIDER || 'ollama'
+    const ollamaUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/+$/, '')
+    const model = process.env.OLLAMA_MODEL || 'llama3.2:1b'
+
+    let isOllamaRunning = false
+    let installedModels = []
+
+    if (provider === 'ollama') {
+      try {
+        const response = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) })
+        if (response.ok) {
+          const data = await response.json()
+          isOllamaRunning = true
+          installedModels = (data.models || []).map((m) => m.name)
+        }
+      } catch {
+        isOllamaRunning = false
+      }
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        provider,
+        model,
+        baseUrl: ollamaUrl,
+        isOllamaRunning,
+        installedModels,
+        hasOpenAIKey: Boolean(process.env.OPENAI_API_KEY),
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
 
 /**
  * POST /api/ai/seo-assistant (or /api/ai/seo-analysis)

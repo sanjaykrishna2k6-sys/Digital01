@@ -29,3 +29,19 @@ export const authRateLimiter = rateLimit({
     message: 'Too many authentication attempts from this IP, please try again after 15 minutes.',
   },
 })
+
+/**
+ * AI generation rate limiter to prevent local model overloading.
+ */
+export const aiRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // 30 AI generations per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  message: {
+    status: 'fail',
+    message: 'Too many AI requests. Please wait a minute before generating more content.',
+  },
+})
+

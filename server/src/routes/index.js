@@ -54,6 +54,7 @@ router.use('/audit-logs', auditLogRoutes)
 router.use('/reports', reportRoutes)
 router.use('/automations', automationRoutes)
 router.use('/ai', aiRoutes)
+router.use('/ai-marketing', aiRoutes)
 router.use('/integrations', integrationsRoutes)
 
 export default router

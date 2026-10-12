@@ -20,6 +20,7 @@ import {
   FileText,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   HelpCircle,
   ExternalLink,
   Zap,
@@ -27,6 +28,7 @@ import {
   ShieldCheck,
   Hash,
   Lightbulb,
+  Cpu,
 } from 'lucide-react'
 import { Card, KpiCard } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -44,7 +46,8 @@ export function AIMarketingAssistantPage() {
   // Primary active tab
   const [activeTab, setActiveTab] = useState('content')
 
-  // Global usage & feedback states
+  // Global provider status & usage
+  const [providerStatus, setProviderStatus] = useState(null)
   const [usageStats, setUsageStats] = useState(null)
   const [loadingUsage, setLoadingUsage] = useState(true)
   const [feedback, setFeedback] = useState(null)
@@ -55,7 +58,7 @@ export function AIMarketingAssistantPage() {
   // ----------------------------------------------------
   const [contentForm, setContentForm] = useState({
     brandName: 'Krishpo Digital',
-    productService: 'Performance SEO & Social Ad Management',
+    productService: 'Performance SEO & Social Ad Retainer',
     platform: 'Instagram',
     contentType: 'Social Post',
     objective: 'Lead Generation',
@@ -67,15 +70,20 @@ export function AIMarketingAssistantPage() {
     length: 'Medium',
   })
   const [generatingContent, setGeneratingContent] = useState(false)
+  const [improvingContent, setImprovingContent] = useState(false)
+  const [customImprovePrompt, setCustomImprovePrompt] = useState('')
+  const [showImproveInput, setShowImproveInput] = useState(false)
   const [generatedResult, setGeneratedResult] = useState(null)
   const [editableCopy, setEditableCopy] = useState('')
   const [isSavingContent, setIsSavingContent] = useState(false)
+  const [savedDrafts, setSavedDrafts] = useState([])
+  const [loadingDrafts, setLoadingDrafts] = useState(false)
 
   // ----------------------------------------------------
   // TAB 2: AI SEO ASSISTANT STATE
   // ----------------------------------------------------
   const [seoForm, setSeoForm] = useState({
-    inputMode: 'url', // 'url' | 'content'
+    inputMode: 'url',
     url: 'https://krishpo.com',
     pageContent: '',
     targetKeywords: 'digital marketing agency, technical seo audit, roas management',
@@ -104,7 +112,7 @@ export function AIMarketingAssistantPage() {
   const [chatMessages, setChatMessages] = useState([
     {
       role: 'assistant',
-      content: `Hello ${user?.name ? user.name.split(' ')[0] : 'there'}! I am Krishpo AI, your agency marketing intelligence co-pilot. I can help analyze your campaigns, optimize Shopify store conversions, review SEO crawl issues, or draft marketing strategies. What are we scaling today?`,
+      content: `Hello ${user?.name ? user.name.split(' ')[0] : 'there'}! I am Krishpo AI, powered by your local Ollama engine (llama3.2:1b). I can help analyze your campaigns, optimize Shopify store conversions, review SEO crawl issues, or draft marketing strategies. What are we scaling today?`,
       timestamp: new Date(),
     },
   ])
@@ -121,30 +129,45 @@ export function AIMarketingAssistantPage() {
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [librarySubTab, setLibrarySubTab] = useState('saved')
   const [librarySearch, setLibrarySearch] = useState('')
-  const [viewItemModal, setViewItemModal] = useState(null)
 
-  // Load initial usage stats
+  // Load initial data on mount (Provider status, Usage stats, Saved drafts)
   useEffect(() => {
-    loadUsage()
+    loadInitialData()
   }, [])
 
   // Auto-dismiss toasts
   useEffect(() => {
     if (feedback) {
-      const timer = setTimeout(() => setFeedback(null), 4000)
+      const timer = setTimeout(() => setFeedback(null), 5000)
       return () => clearTimeout(timer)
     }
   }, [feedback])
 
-  const loadUsage = async () => {
+  const loadInitialData = async () => {
     try {
       setLoadingUsage(true)
-      const data = await aiService.fetchUsageStats()
-      setUsageStats(data)
-    } catch {
-      // safe fallback
+      const [status, usage, drafts] = await Promise.all([
+        aiService.getProviderStatus().catch(() => null),
+        aiService.fetchUsageStats().catch(() => null),
+        aiService.fetchSavedItems({ type: 'content' }).catch(() => []),
+      ])
+      setProviderStatus(status)
+      setUsageStats(usage)
+      setSavedDrafts(drafts || [])
     } finally {
       setLoadingUsage(false)
+    }
+  }
+
+  const loadDrafts = async () => {
+    try {
+      setLoadingDrafts(true)
+      const drafts = await aiService.fetchSavedItems({ type: 'content' })
+      setSavedDrafts(drafts || [])
+    } catch {
+      // ignore
+    } finally {
+      setLoadingDrafts(false)
     }
   }
 
@@ -178,59 +201,80 @@ export function AIMarketingAssistantPage() {
 
       setGeneratedResult(res)
       setEditableCopy(res.content)
-      showToast('success', 'Marketing copy generated successfully!')
-      loadUsage()
+      showToast('success', 'Marketing copy generated successfully with Ollama llama3.2:1b!')
+      loadInitialData()
     } catch (err) {
-      showToast('error', err.message || 'Generation failed. Please try again.')
+      showToast('error', err.message || 'Generation failed. Please verify Ollama is running.')
     } finally {
       setGeneratingContent(false)
     }
   }
 
-  const handleImproveContent = async (instruction = 'improve') => {
-    if (!editableCopy) return
+  const handleImproveContent = async (instruction = 'Make it punchier, improve the hook, and strengthen the call to action') => {
+    if (!editableCopy || !editableCopy.trim()) {
+      showToast('error', 'Please generate or enter content first before improving.')
+      return
+    }
     try {
-      setGeneratingContent(true)
-      let adjustedTone = contentForm.tone
-      if (instruction === 'punchy') adjustedTone = 'High-Urgency & Punchy'
-      if (instruction === 'friendly') adjustedTone = 'Friendly & Conversational'
-      if (instruction === 'authoritative') adjustedTone = 'Professional & Authoritative'
-
-      const res = await aiService.generateContent({
-        ...contentForm,
-        tone: adjustedTone,
-        productService: `Refine and ${instruction}: ${editableCopy.slice(0, 300)}`,
+      setImprovingContent(true)
+      const res = await aiService.improveContent({
+        currentContent: editableCopy,
+        instruction,
+        brandName: contentForm.brandName,
+        platform: contentForm.platform,
+        tone: contentForm.tone,
       })
 
       setGeneratedResult(res)
       setEditableCopy(res.content)
-      showToast('success', `Content updated (${instruction})!`)
+      setShowImproveInput(false)
+      setCustomImprovePrompt('')
+      showToast('success', `Content improved with Ollama (${instruction.slice(0, 30)}...)!`)
     } catch (err) {
-      showToast('error', 'Could not refine content.')
+      showToast('error', err.message || 'Could not improve content.')
     } finally {
-      setGeneratingContent(false)
+      setImprovingContent(false)
     }
   }
 
-  const handleSaveContentToLibrary = async () => {
-    if (!editableCopy) return
+  const handleSaveDraft = async () => {
+    if (!editableCopy || !editableCopy.trim()) {
+      showToast('error', 'No content to save as draft.')
+      return
+    }
     try {
       setIsSavingContent(true)
-      const title = `${contentForm.platform} Copy: ${contentForm.productService.slice(0, 30)}`
-      await aiService.saveItem({
+      const title = `${contentForm.platform} Copy: ${contentForm.productService.slice(0, 35)}`
+      const saved = await aiService.saveItem({
         title,
         type: 'content',
         platform: contentForm.platform,
         content: editableCopy,
         tags: [contentForm.platform, contentForm.contentType, contentForm.tone],
         generationId: generatedResult?.generationId,
+        metadata: {
+          brandName: contentForm.brandName,
+          objective: contentForm.objective,
+          model: generatedResult?.model || 'llama3.2:1b',
+        },
       })
-      showToast('success', 'Saved to your Krishpo AI Library!')
-      loadUsage()
+      showToast('success', 'Draft saved in MongoDB Atlas!')
+      loadDrafts()
     } catch (err) {
-      showToast('error', 'Failed to save asset.')
+      showToast('error', err.message || 'Failed to save draft.')
     } finally {
       setIsSavingContent(false)
+    }
+  }
+
+  const handleDeleteDraft = async (id, e) => {
+    if (e) e.stopPropagation()
+    try {
+      await aiService.deleteSavedItem(id)
+      setSavedDrafts((prev) => prev.filter((d) => d._id !== id))
+      showToast('success', 'Draft removed from MongoDB.')
+    } catch (err) {
+      showToast('error', 'Failed to delete draft.')
     }
   }
 
@@ -265,7 +309,6 @@ export function AIMarketingAssistantPage() {
 
       setSeoAnalysisResult(res.analysis)
       showToast('success', 'SEO Intelligence analysis complete!')
-      loadUsage()
     } catch (err) {
       showToast('error', err.message || 'SEO analysis failed.')
     } finally {
@@ -284,8 +327,7 @@ export function AIMarketingAssistantPage() {
         content: JSON.stringify(seoAnalysisResult, null, 2),
         tags: ['SEO', 'Keywords', 'Technical'],
       })
-      showToast('success', 'SEO plan saved to library!')
-      loadUsage()
+      showToast('success', 'SEO plan saved to MongoDB!')
     } catch (err) {
       showToast('error', 'Failed to save SEO plan.')
     }
@@ -305,7 +347,6 @@ export function AIMarketingAssistantPage() {
       })
       setCampaignPlanResult(res.plan)
       showToast('success', 'Campaign blueprint generated!')
-      loadUsage()
     } catch (err) {
       showToast('error', err.message || 'Failed to generate campaign plan.')
     } finally {
@@ -324,8 +365,7 @@ export function AIMarketingAssistantPage() {
         content: JSON.stringify(campaignPlanResult, null, 2),
         tags: ['Campaign', 'Strategy', 'Budget'],
       })
-      showToast('success', 'Campaign plan saved to library!')
-      loadUsage()
+      showToast('success', 'Campaign plan saved to MongoDB!')
     } catch (err) {
       showToast('error', 'Failed to save campaign plan.')
     }
@@ -371,7 +411,7 @@ export function AIMarketingAssistantPage() {
         ...prev,
         {
           role: 'assistant',
-          content: 'Sorry, I encountered a temporary connection issue. Please try again.',
+          content: err.message || 'Sorry, I encountered an issue connecting to the AI provider.',
           timestamp: new Date(),
         },
       ])
@@ -415,7 +455,6 @@ export function AIMarketingAssistantPage() {
       await aiService.deleteSavedItem(id)
       setSavedItems((prev) => prev.filter((i) => i._id !== id))
       showToast('success', 'Asset removed from library.')
-      loadUsage()
     } catch (err) {
       showToast('error', 'Failed to remove asset.')
     }
@@ -426,7 +465,7 @@ export function AIMarketingAssistantPage() {
       {/* Toast Notification Banner */}
       {feedback && (
         <div
-          className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium transition-all duration-300 animate-in slide-in-from-top-2 ${
+          className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium transition-all duration-300 animate-in slide-in-from-top-2 max-w-md ${
             feedback.type === 'error'
               ? 'bg-rose-50 text-rose-800 border-rose-200'
               : 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -437,7 +476,7 @@ export function AIMarketingAssistantPage() {
           ) : (
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           )}
-          <span>{feedback.message}</span>
+          <span className="leading-snug">{feedback.message}</span>
         </div>
       )}
 
@@ -446,49 +485,69 @@ export function AIMarketingAssistantPage() {
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <span className="px-3 py-1 text-xs font-bold tracking-wider uppercase rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-300 animate-pulse" />
-                KRISHPO INTELLIGENCE
+                KRISHPO AI ENGINE
               </span>
-              <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                {usageStats?.configuredProvider || 'Active AI Engine'}
+              <span
+                className={`px-2.5 py-0.5 text-xs font-semibold rounded-full border flex items-center gap-1.5 ${
+                  providerStatus?.isOllamaRunning !== false
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    providerStatus?.isOllamaRunning !== false
+                      ? 'bg-emerald-400 animate-ping'
+                      : 'bg-amber-400'
+                  }`}
+                />
+                Ollama {providerStatus?.model || 'llama3.2:1b'}
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              AI Marketing Assistant
+              Krishpo AI Marketing Assistant
             </h1>
             <p className="text-sm sm:text-base text-slate-300">
-              Generate high-converting social copy, perform automated SEO audits, blueprint omnichannel campaigns, and chat with agency data in Indian Rupees (₹).
+              Generate platform-tailored marketing copy, polish hooks, and save draft assets into MongoDB using your local Ollama <code className="text-indigo-300 font-mono text-xs bg-indigo-950/80 px-1.5 py-0.5 rounded">llama3.2:1b</code> model.
             </p>
           </div>
 
           {/* Quick Metrics Bar */}
           <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 shrink-0">
             <div className="text-center px-3 border-r border-white/10">
-              <p className="text-xs text-slate-400 font-medium">Generations</p>
-              <p className="text-lg font-bold text-white">
-                {loadingUsage ? '...' : usageStats?.totalGenerations || 0}
+              <p className="text-xs text-slate-400 font-medium">Provider</p>
+              <p className="text-sm font-bold text-white capitalize">
+                {providerStatus?.provider || 'Ollama'}
               </p>
             </div>
             <div className="text-center px-3 border-r border-white/10">
-              <p className="text-xs text-slate-400 font-medium">SEO Audits</p>
-              <p className="text-lg font-bold text-indigo-300">
-                {loadingUsage ? '...' : usageStats?.byType?.seo || 0}
+              <p className="text-xs text-slate-400 font-medium">Model</p>
+              <p className="text-sm font-bold text-indigo-300 font-mono">
+                {providerStatus?.model || 'llama3.2:1b'}
               </p>
             </div>
             <div className="text-center px-3">
-              <p className="text-xs text-slate-400 font-medium">Saved Assets</p>
+              <p className="text-xs text-slate-400 font-medium">Saved Drafts</p>
               <p className="text-lg font-bold text-emerald-300">
-                {loadingUsage ? '...' : usageStats?.savedCount || 0}
+                {savedDrafts.length}
               </p>
             </div>
           </div>
         </div>
 
+        {/* Remote Hosting Limitation Notice Banner */}
+        <div className="mt-4 pt-3 border-t border-white/10 flex items-center gap-2 text-xs text-slate-300">
+          <Cpu className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span>
+            <strong>Local AI Notice:</strong> Ollama runs locally on your PC (<code className="text-indigo-200">http://127.0.0.1:11434</code>). When running locally, generations call your CPU/GPU directly. Remote cloud hosts like Render will require an external Ollama tunnel or API key.
+          </span>
+        </div>
+
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pt-6 border-t border-white/10 mt-6 scrollbar-none">
+        <div className="flex items-center gap-2 overflow-x-auto pt-4 border-t border-white/10 mt-4 scrollbar-none">
           <button
             onClick={() => setActiveTab('content')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
@@ -548,281 +607,461 @@ export function AIMarketingAssistantPage() {
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: AI CONTENT GENERATOR                                               */}
+      {/* FIRST MILESTONE: AI CONTENT GENERATOR                                     */}
       {/* ========================================================================= */}
       {activeTab === 'content' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Form: 5 Cols */}
-          <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Wand2 className="w-5 h-5 text-indigo-600" />
-                Content Parameters
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Configure your target audience, platform, and messaging goals.
-              </p>
-            </div>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Form: 5 Columns */}
+            <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Wand2 className="w-5 h-5 text-indigo-600" />
+                  Content Generator Parameters
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Configure your business, audience, and campaign parameters for Ollama.
+                </p>
+              </div>
 
-            <form onSubmit={handleGenerateContent} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <form onSubmit={handleGenerateContent} className="space-y-4">
+                {/* 1. Brand name & 2. Platform */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      1. Brand Name
+                    </label>
+                    <input
+                      type="text"
+                      value={contentForm.brandName}
+                      onChange={(e) => setContentForm({ ...contentForm, brandName: e.target.value })}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      placeholder="e.g. Krishpo Digital"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      2. Platform
+                    </label>
+                    <select
+                      value={contentForm.platform}
+                      onChange={(e) => setContentForm({ ...contentForm, platform: e.target.value })}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="Instagram">Instagram</option>
+                      <option value="LinkedIn">LinkedIn</option>
+                      <option value="Facebook">Facebook</option>
+                      <option value="Google Ads">Google Ads</option>
+                      <option value="Email Campaign">Email Campaign</option>
+                      <option value="Twitter / X">Twitter / X</option>
+                      <option value="Blog Outline">Blog Article</option>
+                      <option value="YouTube Shorts">YouTube Shorts</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 3. Product or Service */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Brand Name
+                    3. Product or Service Description
                   </label>
-                  <input
-                    type="text"
-                    value={contentForm.brandName}
-                    onChange={(e) => setContentForm({ ...contentForm, brandName: e.target.value })}
+                  <textarea
+                    value={contentForm.productService}
+                    onChange={(e) => setContentForm({ ...contentForm, productService: e.target.value })}
+                    rows={2}
                     className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    placeholder="e.g. Krishpo Organic"
+                    placeholder="Describe what you are selling or promoting..."
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Platform
-                  </label>
-                  <select
-                    value={contentForm.platform}
-                    onChange={(e) => setContentForm({ ...contentForm, platform: e.target.value })}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="Instagram">Instagram</option>
-                    <option value="LinkedIn">LinkedIn</option>
-                    <option value="Facebook">Facebook</option>
-                    <option value="Google Ads">Google Ads</option>
-                    <option value="Email Campaign">Email Campaign</option>
-                    <option value="Blog Outline">Blog Article</option>
-                    <option value="Twitter / X">Twitter / X</option>
-                  </select>
+
+                {/* 4. Content Type & 5. Tone */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      4. Content Type
+                    </label>
+                    <select
+                      value={contentForm.contentType}
+                      onChange={(e) => setContentForm({ ...contentForm, contentType: e.target.value })}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="Social Post">Social Caption</option>
+                      <option value="Carousel Script">Carousel Script</option>
+                      <option value="Ad Copy">High-CTR Ad Copy</option>
+                      <option value="Cold Outreach">Outreach Email</option>
+                      <option value="Hashtag Stack">Hashtags + Hook</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      5. Tone of Voice
+                    </label>
+                    <select
+                      value={contentForm.tone}
+                      onChange={(e) => setContentForm({ ...contentForm, tone: e.target.value })}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="Engaging & Professional">Engaging & Professional</option>
+                      <option value="Bold & Disruptive">Bold & Disruptive</option>
+                      <option value="Urgent & Persuasive">Urgent & Persuasive</option>
+                      <option value="Friendly & Educational">Friendly & Educational</option>
+                      <option value="Sophisticated & Premium">Sophisticated & Premium</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Product / Service Description
-                </label>
-                <textarea
-                  value={contentForm.productService}
-                  onChange={(e) => setContentForm({ ...contentForm, productService: e.target.value })}
-                  rows={2}
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="What are you promoting? Highlight unique features..."
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+                {/* 6. Target Audience */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Content Type
-                  </label>
-                  <select
-                    value={contentForm.contentType}
-                    onChange={(e) => setContentForm({ ...contentForm, contentType: e.target.value })}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="Social Post">Social Caption</option>
-                    <option value="Carousel Script">Carousel Script</option>
-                    <option value="Ad Copy">High-CTR Ad Copy</option>
-                    <option value="Cold Outreach">Outreach Email</option>
-                    <option value="Hashtag Stack">Hashtags + Hook</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Tone of Voice
-                  </label>
-                  <select
-                    value={contentForm.tone}
-                    onChange={(e) => setContentForm({ ...contentForm, tone: e.target.value })}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="Engaging & Professional">Engaging & Professional</option>
-                    <option value="Bold & Disruptive">Bold & Disruptive</option>
-                    <option value="Urgent & Persuasive">Urgent & Persuasive</option>
-                    <option value="Friendly & Educational">Friendly & Educational</option>
-                    <option value="Sophisticated & Premium">Sophisticated & Premium</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Target Audience
-                </label>
-                <input
-                  type="text"
-                  value={contentForm.targetAudience}
-                  onChange={(e) => setContentForm({ ...contentForm, targetAudience: e.target.value })}
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="e.g. Indian D2C Founders, E-Commerce managers"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Call To Action (CTA)
+                    6. Target Audience
                   </label>
                   <input
                     type="text"
-                    value={contentForm.cta}
-                    onChange={(e) => setContentForm({ ...contentForm, cta: e.target.value })}
+                    value={contentForm.targetAudience}
+                    onChange={(e) => setContentForm({ ...contentForm, targetAudience: e.target.value })}
                     className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    placeholder="e.g. Shop Now, Book Audit"
+                    placeholder="e.g. Indian D2C Founders, E-Commerce managers"
                   />
                 </div>
+
+                {/* 7. Marketing Objective */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Language
+                    7. Marketing Objective
                   </label>
                   <select
-                    value={contentForm.language}
-                    onChange={(e) => setContentForm({ ...contentForm, language: e.target.value })}
+                    value={contentForm.objective}
+                    onChange={(e) => setContentForm({ ...contentForm, objective: e.target.value })}
                     className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
-                    <option value="English">English</option>
-                    <option value="Hinglish (Hindi-English)">Hinglish (Hindi-English)</option>
-                    <option value="Hindi">Hindi</option>
+                    <option value="Lead Generation">Lead Generation</option>
+                    <option value="Brand Awareness">Brand Awareness</option>
+                    <option value="E-Commerce Sales">E-Commerce Sales (High ROAS)</option>
+                    <option value="Product Launch">New Product Launch</option>
+                    <option value="Retargeting">Retargeting Past Visitors</option>
                   </select>
                 </div>
+
+                {/* 8. Call to Action & 9. Language */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      8. Call to Action (CTA)
+                    </label>
+                    <input
+                      type="text"
+                      value={contentForm.cta}
+                      onChange={(e) => setContentForm({ ...contentForm, cta: e.target.value })}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      placeholder="e.g. Shop Now, Book Audit"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      9. Language
+                    </label>
+                    <select
+                      value={contentForm.language}
+                      onChange={(e) => setContentForm({ ...contentForm, language: e.target.value })}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="English">English</option>
+                      <option value="Hinglish">Hinglish (Hindi-English)</option>
+                      <option value="Hindi">Hindi</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 10. Keywords */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    10. Keywords (comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={contentForm.keywords}
+                    onChange={(e) => setContentForm({ ...contentForm, keywords: e.target.value })}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    placeholder="growth agency, performance marketing, seo"
+                  />
+                </div>
+
+                {/* Submit button */}
+                <button
+                  type="submit"
+                  disabled={generatingContent}
+                  className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  {generatingContent ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Calling Ollama (llama3.2:1b)...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Generate Content with Ollama
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            {/* Right Editor & Actions: 7 Columns */}
+            <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-indigo-600" />
+                    Generated AI Copy (Editable)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Output returned from local Ollama model. Edit directly or use AI refinement actions.
+                  </p>
+                </div>
+
+                {editableCopy && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* COPY BUTTON */}
+                    <button
+                      onClick={() => copyToClipboard(editableCopy, 'content')}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 transition-colors shadow-2xs"
+                      title="Copy to clipboard"
+                    >
+                      {copiedKey === 'content' ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      Copy
+                    </button>
+
+                    {/* REGENERATE BUTTON */}
+                    <button
+                      onClick={handleGenerateContent}
+                      disabled={generatingContent || improvingContent}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 transition-colors shadow-2xs"
+                      title="Regenerate fresh response with Ollama"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${generatingContent ? 'animate-spin' : ''}`} />
+                      Regenerate
+                    </button>
+
+                    {/* SAVE DRAFT BUTTON (MongoDB) */}
+                    <button
+                      onClick={handleSaveDraft}
+                      disabled={isSavingContent}
+                      className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 transition-colors shadow-sm"
+                      title="Save draft to MongoDB"
+                    >
+                      <Bookmark className="w-3.5 h-3.5" />
+                      {isSavingContent ? 'Saving...' : 'Save Draft'}
+                    </button>
+
+                    {/* DOWNLOAD TXT */}
+                    <button
+                      onClick={() =>
+                        handleDownloadTxt(
+                          `${contentForm.platform.toLowerCase()}-draft`,
+                          editableCopy
+                        )
+                      }
+                      className="p-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                      title="Download .txt"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Target Keywords (comma separated)
-                </label>
-                <input
-                  type="text"
-                  value={contentForm.keywords}
-                  onChange={(e) => setContentForm({ ...contentForm, keywords: e.target.value })}
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="growth agency, performance marketing, seo"
+              {/* Editable Text Area */}
+              <div className="relative">
+                <textarea
+                  value={editableCopy}
+                  onChange={(e) => setEditableCopy(e.target.value)}
+                  placeholder="Your AI-generated marketing copy will appear here. Fill in the parameters and click Generate Content with Ollama..."
+                  rows={13}
+                  className="w-full text-sm font-sans leading-relaxed border border-slate-200 rounded-xl p-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-slate-50/50"
                 />
               </div>
 
-              <button
-                type="submit"
-                disabled={generatingContent}
-                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
-              >
-                {generatingContent ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Generating with AI...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    Generate Marketing Copy
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Right Editor & Actions: 7 Cols */}
-          <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-indigo-600" />
-                  Generated Output (Editable)
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Refine the copy directly or use one-click AI enhancement tools.
-                </p>
-              </div>
-
+              {/* AI Improve Controls (Ollama calls) */}
               {editableCopy && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <button
-                    onClick={() => copyToClipboard(editableCopy, 'content')}
-                    className="p-2 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 transition-colors"
-                    title="Copy to clipboard"
-                  >
-                    {copiedKey === 'content' ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
-                    Copy
-                  </button>
-                  <button
-                    onClick={handleSaveContentToLibrary}
-                    disabled={isSavingContent}
-                    className="p-2 text-xs font-semibold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 flex items-center gap-1.5 transition-colors"
-                  >
-                    <Bookmark className="w-3.5 h-3.5" />
-                    Save
-                  </button>
-                  <button
-                    onClick={() =>
-                      handleDownloadTxt(
-                        `${contentForm.platform.toLowerCase()}-copy`,
-                        editableCopy
-                      )
-                    }
-                    className="p-2 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 transition-colors"
-                    title="Download .txt"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                      <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
+                      AI Improve Actions (Calls Ollama Backend):
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowImproveInput(!showImproveInput)}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      {showImproveInput ? 'Cancel Custom Prompt' : '+ Custom Improve Instruction'}
+                    </button>
+                  </div>
+
+                  {/* One-click quick improvements */}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => handleImproveContent('Make it significantly punchier, heighten urgency, and shorten sentences')}
+                      disabled={improvingContent}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 shadow-2xs transition-all flex items-center gap-1"
+                    >
+                      ⚡ Make Punchier & Urgency
+                    </button>
+                    <button
+                      onClick={() => handleImproveContent('Condense the copy into a short, concise mobile-friendly post')}
+                      disabled={improvingContent}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 shadow-2xs transition-all flex items-center gap-1"
+                    >
+                      ✂️ Shorten for Mobile
+                    </button>
+                    <button
+                      onClick={() => handleImproveContent('Rewrite the opening hook to be more provocative and irresistible')}
+                      disabled={improvingContent}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 shadow-2xs transition-all flex items-center gap-1"
+                    >
+                      🎯 Strengthen Hook & CTA
+                    </button>
+                    <button
+                      onClick={() => handleImproveContent('Translate and adapt this copy into high-engagement Hinglish')}
+                      disabled={improvingContent}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 shadow-2xs transition-all flex items-center gap-1"
+                    >
+                      🇮🇳 Convert to Hinglish
+                    </button>
+                  </div>
+
+                  {/* Custom instruction bar */}
+                  {showImproveInput && (
+                    <div className="flex gap-2 pt-1 animate-in fade-in-50">
+                      <input
+                        type="text"
+                        value={customImprovePrompt}
+                        onChange={(e) => setCustomImprovePrompt(e.target.value)}
+                        placeholder="e.g. Add 3 emoji bullet points, mention 20% discount code, and add hashtag #D2CIndia..."
+                        className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
+                      />
+                      <button
+                        onClick={() => handleImproveContent(customImprovePrompt)}
+                        disabled={improvingContent || !customImprovePrompt.trim()}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm"
+                      >
+                        {improvingContent ? 'Improving...' : 'Apply AI Improvement'}
+                      </button>
+                    </div>
+                  )}
+
+                  {improvingContent && (
+                    <div className="flex items-center gap-2 text-xs text-indigo-700 pt-1 font-medium">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Refining copy with Ollama llama3.2:1b...
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Editable Text Area */}
-            <div className="relative">
-              <textarea
-                value={editableCopy}
-                onChange={(e) => setEditableCopy(e.target.value)}
-                placeholder="Your AI-generated marketing copy will appear here. Fill in the parameters and click Generate..."
-                rows={14}
-                className="w-full text-sm font-sans leading-relaxed border border-slate-200 rounded-xl p-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-slate-50/50"
-              />
+          {/* Persistent MongoDB Saved Drafts Section */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Bookmark className="w-4 h-4 text-indigo-600" />
+                  Saved Drafts in MongoDB Atlas ({savedDrafts.length})
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Drafts are permanently persisted in MongoDB and remain available after refreshing the page.
+                </p>
+              </div>
+
+              <button
+                onClick={loadDrafts}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 flex items-center gap-1.5 transition-colors self-start sm:self-auto"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingDrafts ? 'animate-spin' : ''}`} />
+                Refresh Drafts
+              </button>
             </div>
 
-            {/* Quick AI Refinement Actions */}
-            {editableCopy && (
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2">
-                <p className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5">
-                  <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
-                  Instant AI Enhancers:
+            {loadingDrafts ? (
+              <div className="py-8 flex justify-center">
+                <Loading size="md" title="Loading saved drafts from MongoDB..." />
+              </div>
+            ) : savedDrafts.length === 0 ? (
+              <div className="py-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <Bookmark className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-slate-700">No Saved Drafts Yet</p>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                  Generate copy using Ollama above, then click <strong>"Save Draft"</strong> to persist it in MongoDB.
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => handleImproveContent('punchy')}
-                    disabled={generatingContent}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 shadow-sm transition-all"
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {savedDrafts.map((draft) => (
+                  <div
+                    key={draft._id}
+                    className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-400 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between space-y-3"
                   >
-                    ⚡ Make More Punchy
-                  </button>
-                  <button
-                    onClick={() => handleImproveContent('shorten')}
-                    disabled={generatingContent}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 shadow-sm transition-all"
-                  >
-                    ✂️ Shorten for Mobile
-                  </button>
-                  <button
-                    onClick={() => handleImproveContent('authoritative')}
-                    disabled={generatingContent}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 shadow-sm transition-all"
-                  >
-                    👔 More Professional
-                  </button>
-                  <button
-                    onClick={() => handleGenerateContent()}
-                    disabled={generatingContent}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 shadow-sm transition-all flex items-center gap-1"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    Regenerate Fresh
-                  </button>
-                </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-indigo-50 text-indigo-700">
+                          {draft.platform || 'Draft'}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {formatDate(draft.createdAt)}
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-900 line-clamp-1">
+                        {draft.title}
+                      </h4>
+                      <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed font-mono bg-slate-50 p-2 rounded-lg">
+                        {draft.content}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => {
+                          setEditableCopy(draft.content)
+                          if (draft.platform) {
+                            setContentForm((prev) => ({ ...prev, platform: draft.platform }))
+                          }
+                          showToast('success', 'Draft loaded into editor!')
+                        }}
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                      >
+                        Load into Editor →
+                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => copyToClipboard(draft.content, draft._id)}
+                          className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-100"
+                          title="Copy text"
+                        >
+                          {copiedKey === draft._id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteDraft(draft._id, e)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50"
+                          title="Delete from MongoDB"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -834,7 +1073,6 @@ export function AIMarketingAssistantPage() {
       {/* ========================================================================= */}
       {activeTab === 'seo' && (
         <div className="space-y-6">
-          {/* SEO Input Card */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -847,7 +1085,6 @@ export function AIMarketingAssistantPage() {
                 </p>
               </div>
 
-              {/* Input Mode Selector */}
               <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
                 <button
                   type="button"
@@ -961,17 +1198,15 @@ export function AIMarketingAssistantPage() {
             </form>
           </div>
 
-          {/* SEO Output Section */}
           {seoAnalysisResult && (
             <div className="space-y-6 animate-in fade-in-50 duration-300">
-              {/* Action Toolbar */}
               <div className="flex items-center justify-between bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                 <div>
                   <p className="text-sm font-bold text-slate-800">
                     Audit target: {seoAnalysisResult.targetUrl}
                   </p>
                   <p className="text-xs text-slate-500">
-                    Distinguishing AI strategic recommendations from live crawled data.
+                    AI strategic recommendations for search engines.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -992,12 +1227,11 @@ export function AIMarketingAssistantPage() {
                     className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-sm"
                   >
                     <Bookmark className="w-3.5 h-3.5" />
-                    Save to Library
+                    Save to MongoDB
                   </button>
                 </div>
               </div>
 
-              {/* SERP Snippet Preview Card */}
               <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                 <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
                   <Globe className="w-4 h-4 text-indigo-600" />
@@ -1016,119 +1250,6 @@ export function AIMarketingAssistantPage() {
                   <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                     {seoAnalysisResult.metaDescription}
                   </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-xs font-bold text-slate-600 uppercase mb-1">Optimized H1</p>
-                    <p className="text-sm font-medium text-slate-800">
-                      {seoAnalysisResult.headings?.h1 || 'N/A'}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-xs font-bold text-slate-600 uppercase mb-1">
-                      Recommended H2 Subheadings
-                    </p>
-                    <ul className="text-xs text-slate-700 space-y-1 list-disc list-inside">
-                      {seoAnalysisResult.headings?.recommendedH2s?.map((h2, idx) => (
-                        <li key={idx}>{h2}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* Keyword Opportunities */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-                    <Hash className="w-4 h-4 text-emerald-600" />
-                    Primary High-Intent Keywords
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {seoAnalysisResult.primaryKeywords?.map((kw, idx) => (
-                      <span
-                        key={idx}
-                        className="px-3 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5"
-                      >
-                        <Check className="w-3 h-3 text-emerald-600" />
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4 text-indigo-600" />
-                    Secondary & Long-Tail Targets
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {seoAnalysisResult.secondaryKeywords?.map((kw, idx) => (
-                      <span
-                        key={idx}
-                        className="px-3 py-1 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200"
-                      >
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* On-Page Recommendations Checklist */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                  Actionable On-Page SEO Checklist
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {seoAnalysisResult.onPageRecommendations?.map((rec, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-xl border border-slate-100 bg-slate-50 flex items-start gap-2.5"
-                    >
-                      <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                        {idx + 1}
-                      </span>
-                      <p className="text-xs text-slate-700 leading-relaxed font-medium">{rec}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Content Briefs & Internal Linking */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                    Suggested Blog Content Briefs
-                  </h3>
-                  <ul className="space-y-2 text-xs text-slate-700">
-                    {seoAnalysisResult.blogTopics?.map((topic, idx) => (
-                      <li key={idx} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                        📌 {topic}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                    Internal Linking Recommendations
-                  </h3>
-                  <div className="space-y-2 text-xs text-slate-700">
-                    {seoAnalysisResult.internalLinks?.map((link, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between"
-                      >
-                        <span className="font-semibold text-indigo-600">"{link.anchor}"</span>
-                        <span className="text-slate-500 font-mono text-[11px]">
-                          → {link.suggestedTarget}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
@@ -1180,7 +1301,6 @@ export function AIMarketingAssistantPage() {
                     <option value="E-Commerce Sales">E-Commerce Sales (High ROAS)</option>
                     <option value="Brand Awareness & Reach">Brand Awareness & Reach</option>
                     <option value="Product Launch">New Product Launch</option>
-                    <option value="App Installs">App Installs & Signups</option>
                   </select>
                 </div>
               </div>
@@ -1196,7 +1316,7 @@ export function AIMarketingAssistantPage() {
                       type="number"
                       value={campaignForm.budget}
                       onChange={(e) => setCampaignForm({ ...campaignForm, budget: e.target.value })}
-                      placeholder="100000"
+                      placeholder="150000"
                       className="w-full text-sm border border-slate-200 rounded-xl pl-8 pr-3 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       required
                     />
@@ -1214,7 +1334,6 @@ export function AIMarketingAssistantPage() {
                     <option value={2}>2 Weeks (Sprint)</option>
                     <option value={4}>4 Weeks (Standard Month)</option>
                     <option value={8}>8 Weeks (Quarterly)</option>
-                    <option value={12}>12 Weeks (Full Season)</option>
                   </select>
                 </div>
                 <div>
@@ -1253,10 +1372,8 @@ export function AIMarketingAssistantPage() {
             </form>
           </div>
 
-          {/* Campaign Strategy Output */}
           {campaignPlanResult && (
             <div className="space-y-6 animate-in fade-in-50 duration-300">
-              {/* Header Card */}
               <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
@@ -1286,7 +1403,7 @@ export function AIMarketingAssistantPage() {
                       className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-sm"
                     >
                       <Bookmark className="w-3.5 h-3.5" />
-                      Save to Library
+                      Save to MongoDB
                     </button>
                   </div>
                 </div>
@@ -1295,138 +1412,6 @@ export function AIMarketingAssistantPage() {
                   {campaignPlanResult.executiveBrief}
                 </div>
               </div>
-
-              {/* Budget Allocation Breakdown */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-600" />
-                  Recommended Budget Allocation (Indian Rupees ₹)
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {campaignPlanResult.budgetAllocation?.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2 hover:border-indigo-400 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase">
-                          {item.channel}
-                        </span>
-                        <span className="px-2 py-0.5 text-xs font-extrabold rounded-full bg-indigo-100 text-indigo-700">
-                          {item.share}
-                        </span>
-                      </div>
-                      <p className="text-2xl font-black text-slate-900">
-                        {item.amountInRupees}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Audience Personas & Messaging Angles */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                    Target Audience Personas
-                  </h3>
-                  <div className="space-y-3">
-                    {campaignPlanResult.targetPersonas?.map((persona, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3.5 rounded-xl border border-slate-100 bg-slate-50 space-y-1.5"
-                      >
-                        <h4 className="text-sm font-bold text-slate-900">{persona.name}</h4>
-                        <p className="text-xs text-slate-500">
-                          <strong>Demographics:</strong> {persona.demographics}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          <strong>Pain Points:</strong> {persona.painPoints}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                    High-Converting Messaging Hooks
-                  </h3>
-                  <div className="space-y-3">
-                    {campaignPlanResult.messagingAngles?.map((angle, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3.5 rounded-xl border border-slate-100 bg-slate-50 space-y-1"
-                      >
-                        <p className="text-sm font-bold text-indigo-700">"{angle.hook}"</p>
-                        <p className="text-xs text-slate-600">{angle.angle}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Weekly Execution Roadmap */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                  Weekly Execution Milestones
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {campaignPlanResult.weeklyMilestones?.map((step, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1"
-                    >
-                      <span className="text-xs font-black text-indigo-600 uppercase">
-                        {step.week}
-                      </span>
-                      <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                        {step.focus}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Projected KPIs */}
-              {campaignPlanResult.projectedKPIs && (
-                <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                      Projected Campaign KPIs
-                    </h3>
-                    <span className="text-[11px] text-slate-400">
-                      *Estimates based on regional performance benchmarks
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
-                    <div>
-                      <p className="text-xs text-slate-400">Estimated Reach</p>
-                      <p className="text-lg font-bold text-white">
-                        {campaignPlanResult.projectedKPIs.estimatedImpressions}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400">Target Clicks</p>
-                      <p className="text-lg font-bold text-indigo-300">
-                        {campaignPlanResult.projectedKPIs.estimatedClicks}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400">Expected CTR</p>
-                      <p className="text-lg font-bold text-emerald-300">
-                        {campaignPlanResult.projectedKPIs.targetCTR}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400">Estimated ROAS</p>
-                      <p className="text-lg font-bold text-amber-300">
-                        {campaignPlanResult.projectedKPIs.estimatedROAS}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -1437,7 +1422,6 @@ export function AIMarketingAssistantPage() {
       {/* ========================================================================= */}
       {activeTab === 'chat' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[700px]">
-          {/* Chat Header */}
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
@@ -1447,7 +1431,7 @@ export function AIMarketingAssistantPage() {
                 <h3 className="text-sm font-bold text-slate-900">Krishpo Marketing Co-Pilot</h3>
                 <p className="text-xs text-slate-500 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Grounded with your Agency SEO & Shopify data
+                  Connected with Ollama ({providerStatus?.model || 'llama3.2:1b'})
                 </p>
               </div>
             </div>
@@ -1469,7 +1453,6 @@ export function AIMarketingAssistantPage() {
             </button>
           </div>
 
-          {/* Quick Prompts Bar */}
           <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-2 overflow-x-auto scrollbar-none">
             <span className="text-xs font-bold text-slate-400 uppercase shrink-0">Try asking:</span>
             {[
@@ -1488,7 +1471,6 @@ export function AIMarketingAssistantPage() {
             ))}
           </div>
 
-          {/* Chat Messages Feed */}
           <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
             {chatMessages.map((msg, idx) => (
               <div
@@ -1541,13 +1523,12 @@ export function AIMarketingAssistantPage() {
                 </div>
                 <div className="p-4 rounded-2xl bg-slate-100 text-slate-500 text-sm flex items-center gap-2">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                  Analyzing agency context and generating advice...
+                  Generating answer with Ollama llama3.2:1b...
                 </div>
               </div>
             )}
           </div>
 
-          {/* Chat Input Bar */}
           <div className="p-4 border-t border-slate-100 bg-white">
             <form
               onSubmit={(e) => {
@@ -1606,7 +1587,6 @@ export function AIMarketingAssistantPage() {
                 </button>
               </div>
 
-              {/* Search Box */}
               <div className="relative w-full sm:w-64">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
@@ -1619,7 +1599,6 @@ export function AIMarketingAssistantPage() {
               </div>
             </div>
 
-            {/* List Table / Cards */}
             {librarySubTab === 'saved' ? (
               loadingSaved ? (
                 <div className="py-12 flex justify-center">
@@ -1628,7 +1607,7 @@ export function AIMarketingAssistantPage() {
               ) : savedItems.length === 0 ? (
                 <EmptyState
                   title="No Saved Assets Yet"
-                  description="When you generate copy, SEO plans, or campaign blueprints, click 'Save' to bookmark them here."
+                  description="When you generate copy, SEO plans, or campaign blueprints, click 'Save Draft' to bookmark them here."
                   icon={Bookmark}
                 />
               ) : (
@@ -1636,7 +1615,7 @@ export function AIMarketingAssistantPage() {
                   {savedItems.map((item) => (
                     <div
                       key={item._id}
-                      className="p-5 rounded-2xl border border-slate-200 bg-white hover:border-indigo-400 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                      className="p-5 rounded-2xl border border-slate-200 bg-white hover:border-indigo-400 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
                     >
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -1700,7 +1679,7 @@ export function AIMarketingAssistantPage() {
             ) : historyItems.length === 0 ? (
               <EmptyState
                 title="No Generation History"
-                description="Generations are logged here automatically."
+                description="Generations with Ollama are logged here automatically."
                 icon={Sparkles}
               />
             ) : (
